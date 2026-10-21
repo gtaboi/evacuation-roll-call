@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=8";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=9";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -743,14 +743,19 @@ function removeAdmin(email) {
 // ---------- Google Maps (admin: assembly points) ----------
 
 const MAPS_KEY = options.googleMapsApiKey || "";
-let mapsPromise = null;
+let mapsPromise = null, mapsBroken = false;
 
 function loadGoogleMaps() {
   if (!MAPS_KEY) return Promise.reject(new Error("no Google Maps key"));
   if (mapsPromise) return mapsPromise;
   mapsPromise = new Promise((resolve, reject) => {
     window.__rollcallMapsReady = () => resolve(window.google.maps);
-    window.gm_authFailure = () => showError("Google Maps refused the API key. Check the key allows this site's address and has Maps JavaScript API and Places API (New) enabled.");
+    window.gm_authFailure = () => {
+      mapsBroken = true;
+      $("mapUse").disabled = true;
+      $("mapCoords").textContent = "Map unavailable";
+      showError("Google Maps refused the API key. Check the key allows this site's address and has Maps JavaScript API and Places API (New) enabled.");
+    };
     const s = document.createElement("script");
     s.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(MAPS_KEY) + "&v=weekly&loading=async&callback=__rollcallMapsReady";
     s.async = true;
@@ -855,6 +860,9 @@ async function openPicker(k) {
   }
   pickerKey = k;
   $("mapTitle").textContent = "Set the " + WEATHER[k].toLowerCase() + " assembly point";
+  // Only enabled once the map has actually drawn, so a failed map can't save a 0,0 pin.
+  $("mapUse").disabled = true;
+  $("mapCoords").textContent = "Loading map…";
   $("mapDialog").showModal();
   try {
     const maps = await loadGoogleMaps();
@@ -871,6 +879,12 @@ async function openPicker(k) {
         $("mapCoords").textContent = c.lat().toFixed(6) + ", " + c.lng().toFixed(6);
       });
       map.addListener("click", (e) => map.panTo(e.latLng));
+      map.addListener("idle", () => {
+        if (mapsBroken) return;
+        const c = map.getCenter();
+        $("mapCoords").textContent = c.lat().toFixed(6) + ", " + c.lng().toFixed(6);
+        $("mapUse").disabled = false;
+      });
       picker = { map, circle };
     }
     picker.circle.setRadius(radius);
