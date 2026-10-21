@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=4";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=5";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -8,8 +8,9 @@ const DEFAULT_RADIUS = options.defaultRadiusM || 100;
 const S = {
   uid: null, email: null, isAdmin: false, view: "user",
   event: null,          // newest events row
-  checkins: [],         // rows for the current event
-  profiles: {},         // id -> {email, name}
+  mine: null,           // this phone's check-in for the current event
+  counts: { safe: 0, help: 0, total: 0 },
+  checkins: [],         // admin: all check-ins for the current event
   roster: [],           // admin: expected staff
   marks: {},            // admin: roster_id -> {status, at}
   summaries: [],        // admin: [{event_id, data}]
@@ -19,6 +20,32 @@ const S = {
   busy: false,
 };
 let sb = null, channel = null;
+
+// ---------- this phone ----------
+
+function randomHex(bytes) {
+  const a = new Uint8Array(bytes);
+  crypto.getRandomValues(a);
+  return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// A random id kept on the phone, so a person can update their own check-in without an account.
+let memDevice = null;
+function deviceId() {
+  try {
+    let d = localStorage.getItem("rollcall.device");
+    if (!d) { d = randomHex(16); localStorage.setItem("rollcall.device", d); }
+    return d;
+  } catch {
+    return memDevice || (memDevice = randomHex(16));
+  }
+}
+function savedName() {
+  try { return localStorage.getItem("rollcall.name") || ""; } catch { return ""; }
+}
+function rememberName(name) {
+  try { localStorage.setItem("rollcall.name", name); } catch { /* not kept on this phone */ }
+}
 
 // ---------- formatting ----------
 
@@ -41,6 +68,7 @@ function fmtDur(sec) {
 }
 const fmtM = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m");
 const mapUrl = (p) => "https://www.google.com/maps/search/?api=1&query=" + p.lat + "," + p.lng;
+const normName = (n) => (n || "").trim().replace(/\s+/g, " ").toLowerCase();
 
 function showError(text) {
   $("error").textContent = text || "";
@@ -107,22 +135,27 @@ async function loadEvent() {
   const rows = await q(sb.from("events").select("*").order("started_at", { ascending: false }).limit(1));
   S.event = rows[0] || null;
 }
-async function loadCheckins() {
-  S.checkins = S.event ? await q(sb.from("checkins").select("*").eq("event_id", S.event.id)) : [];
-}
-async function loadProfiles() {
-  const rows = await q(sb.from("profiles").select("id,email,name"));
-  S.profiles = Object.fromEntries(rows.map((r) => [r.id, r]));
+async function loadMine() {
+  if (!S.event) { S.mine = null; S.counts = { safe: 0, help: 0, total: 0 }; return; }
+  const [mine, counts] = await Promise.all([
+    q(sb.rpc("my_checkin", { p_event: S.event.id, p_device: deviceId() })),
+    q(sb.rpc("roll_counts", { p_event: S.event.id })),
+  ]);
+  S.mine = (mine && mine[0]) || null;
+  S.counts = counts || { safe: 0, help: 0, total: 0 };
 }
 async function loadAdminData() {
   if (!S.isAdmin) return;
-  const [roster, settings, admins, sums, marks] = await Promise.all([
+  const ev = S.event;
+  const [checkins, roster, settings, admins, sums, marks] = await Promise.all([
+    ev ? q(sb.from("checkins").select("*").eq("event_id", ev.id)) : Promise.resolve([]),
     q(sb.from("roster").select("*").order("name")),
     q(sb.from("settings").select("*").eq("id", 1)),
     q(sb.from("admins").select("*").order("email")),
     q(sb.from("event_summaries").select("*").order("event_id", { ascending: false }).limit(50)),
-    S.event ? q(sb.from("marks").select("*").eq("event_id", S.event.id)) : Promise.resolve([]),
+    ev ? q(sb.from("marks").select("*").eq("event_id", ev.id)) : Promise.resolve([]),
   ]);
+  S.checkins = checkins;
   S.roster = roster;
   S.settings = settings[0] || { target_min: 10, points: {} };
   S.admins = admins;
@@ -132,12 +165,12 @@ async function loadAdminData() {
 
 let refreshing = null;
 async function refreshAll() {
-  if (!sb || !S.uid) return;
+  if (!sb) return;
   if (refreshing) return refreshing;
   refreshing = (async () => {
     try {
       await loadEvent();
-      await Promise.all([loadCheckins(), loadProfiles(), loadAdminData()]);
+      await Promise.all([loadMine(), loadAdminData()]);
     } catch (e) {
       console.error(e);
       showError("Couldn't load the latest roll call. Check your connection; the page retries automatically.");
@@ -155,19 +188,16 @@ function scheduleRefresh() {
   refreshTimer = setTimeout(refreshAll, 250);
 }
 
+// Staff only hear about events; admins also hear check-ins and their own lists change.
 function subscribe() {
   if (channel) sb.removeChannel(channel);
   channel = sb.channel("roll-call");
-  for (const t of ["events", "checkins", "profiles", "roster", "marks", "event_summaries", "settings", "admins"]) {
-    channel.on("postgres_changes", { event: "*", schema: "public", table: t }, scheduleRefresh);
-  }
+  const tables = S.isAdmin ? ["events", "checkins", "roster", "marks", "event_summaries", "settings", "admins"] : ["events"];
+  for (const t of tables) channel.on("postgres_changes", { event: "*", schema: "public", table: t }, scheduleRefresh);
   channel.subscribe();
 }
 
-// ---------- roll call ----------
-
-const current = () => S.checkins;
-const nameOf = (uid) => (S.profiles[uid] && (S.profiles[uid].name || S.profiles[uid].email)) || "Someone";
+// ---------- roll call (admin) ----------
 
 function timeTo(times, expected, share) {
   if (!expected) return null;
@@ -177,20 +207,19 @@ function timeTo(times, expected, share) {
 
 function rollState() {
   const ev = S.event;
-  const cur = current();
-  const emailOf = (uid) => ((S.profiles[uid] && S.profiles[uid].email) || "").toLowerCase();
-  const checkedEmails = new Set(cur.map((c) => emailOf(c.user_id)).filter(Boolean));
-  const rows = cur.map((c) => ({
-    key: c.user_id, uid: c.user_id, name: nameOf(c.user_id), status: c.status, note: c.note,
+  const checkedNames = new Set(S.checkins.map((c) => normName(c.name)));
+  const rows = S.checkins.map((c) => ({
+    key: c.device_id, name: c.name, status: c.status, note: c.note,
     distance: c.distance_m, accuracy: c.accuracy_m, at: ms(c.at), firstAt: ms(c.first_at), marked: false,
+    onRoster: S.roster.some((p) => normName(p.name) === normName(c.name)),
   }));
   for (const p of S.roster) {
-    if (p.email && checkedEmails.has(p.email)) continue;
+    if (checkedNames.has(normName(p.name))) continue;
     const m = S.marks[p.id];
-    if (m) rows.push({ key: p.id, name: p.name, status: m.status, at: ms(m.at), firstAt: ms(m.at), marked: true, rosterId: p.id });
+    if (m) rows.push({ key: p.id, name: p.name, status: m.status, at: ms(m.at), firstAt: ms(m.at), marked: true, rosterId: p.id, onRoster: true });
   }
   rows.sort((a, b) => (a.status === "help" ? 0 : 1) - (b.status === "help" ? 0 : 1) || b.at - a.at);
-  const missing = ev ? S.roster.filter((p) => !(p.email && checkedEmails.has(p.email)) && !S.marks[p.id]) : [];
+  const missing = ev ? S.roster.filter((p) => !checkedNames.has(normName(p.name)) && !S.marks[p.id]) : [];
   const times = ev ? rows.map((r) => Math.max(0, (r.firstAt - ms(ev.started_at)) / 1000)).sort((a, b) => a - b) : [];
   return { rows, missing, times };
 }
@@ -257,7 +286,8 @@ function applyView() {
   $("tagline").textContent = admin
     ? "Admin: run the roll call and track how fast everyone is accounted for."
     : "Check in when you reach the assembly point.";
-  $("meLabel").textContent = "Signed in as " + (S.email || "") + (S.isAdmin ? " · admin" : "");
+  $("meLabel").textContent = S.isAdmin ? "Signed in as " + S.email + " · admin" : "";
+  $("authToggle").textContent = S.uid ? "Sign out" : "Admin sign in";
 }
 
 function renderStatus() {
@@ -276,8 +306,8 @@ function renderStatus() {
   } else {
     $("statusTitle").textContent = "No evacuation in progress";
     $("statusSub").textContent = admin
-      ? "Start one when the alarm sounds. Everyone who signs in can then check in."
-      : "An admin starts the roll call when the alarm sounds.";
+      ? "Start one when the alarm sounds. Staff can then check in from this page."
+      : "Check-in opens when an admin starts the roll call.";
   }
 
   const cc = $("coordControls");
@@ -330,7 +360,7 @@ function renderStatus() {
 function renderMine() {
   const ev = S.event;
   const active = !!(ev && ev.active);
-  const me = current().find((c) => c.user_id === S.uid);
+  const me = S.mine;
   const radius = (ev && ev.point && ev.point.radius) || DEFAULT_RADIUS;
   $("btnSafe").disabled = !active || S.busy;
   $("btnHelp").disabled = !active || S.busy;
@@ -340,14 +370,16 @@ function renderMine() {
   box.hidden = !me;
   if (me) {
     box.className = "mine " + me.status;
-    $("mineTitle").textContent = me.status === "help" ? "You asked for help" : "You're checked in as safe";
+    $("mineTitle").textContent = (me.status === "help" ? "Help requested for " : "Checked in as safe: ") + me.name;
     const bits = [fmtClock(ms(me.at))];
     if (me.distance_m != null) bits.push(fmtM(me.distance_m) + " from the point");
     if (me.note) bits.push(me.note);
     $("mineSub").textContent = bits.join(" · ");
   }
-  const prof = S.profiles[S.uid];
-  if (document.activeElement !== $("myName")) $("myName").value = (prof && prof.name) || "";
+  if (document.activeElement !== $("myName") && !$("myName").value) $("myName").value = savedName();
+  $("uHelp").textContent = S.counts.help || 0;
+  $("uSafe").textContent = S.counts.safe || 0;
+  $("uTotal").textContent = S.counts.total || 0;
 }
 
 function renderPerformance(st) {
@@ -524,20 +556,12 @@ function renderMapLink(k) {
   }
 }
 
-function renderLists(st) {
-  const admin = S.isAdmin && S.view === "admin";
-  const nHelp = st.rows.filter((r) => r.status === "help").length;
-  $("uHelp").textContent = nHelp;
-  $("uSafe").textContent = st.rows.length - nHelp;
-  $("uTotal").textContent = st.rows.length;
+function renderAdminLists(st) {
   $("rollMeta").textContent = S.event ? fmtDate(ms(S.event.started_at)) + " " + fmtClock(ms(S.event.started_at)) : "";
 
-  $("missingBlock").hidden = !(admin && S.event && st.missing.length);
-  if (admin) {
-    $("missingList").replaceChildren(...st.missing.map((p) =>
-      personRow(p.name, p.email || "No sign-in: mark safe yourself",
-        [pill("missing", "Missing"), smallBtn("Mark safe", "go", () => setMark(p.id, true))])));
-  }
+  $("missingBlock").hidden = !(S.event && st.missing.length);
+  $("missingList").replaceChildren(...st.missing.map((p) =>
+    personRow(p.name, "", [pill("missing", "Missing"), smallBtn("Mark safe", "go", () => setMark(p.id, true))])));
 
   const ul = $("roster");
   ul.hidden = st.rows.length === 0;
@@ -550,45 +574,38 @@ function renderLists(st) {
     t.className = "mono";
     t.textContent = fmtClock(r.at);
     const extras = [pill(r.status, r.status === "help" ? "Needs help" : "Safe"), t];
-    if (r.marked && admin) extras.push(smallBtn("Undo", "", () => setMark(r.rosterId, false)));
+    if (r.marked) extras.push(smallBtn("Undo", "", () => setMark(r.rosterId, false)));
     let detail;
     if (r.marked) detail = "Marked safe by an admin";
     else {
       const bits = [];
       if (r.distance != null) bits.push(fmtM(r.distance) + " from point" + (r.accuracy ? " (±" + Math.round(r.accuracy) + " m)" : ""));
       else if (r.status === "help") bits.push("Location unknown");
+      if (!r.onRoster && S.roster.length) bits.push("Not on staff list");
       if (r.note) bits.push(r.note);
       detail = bits.join(" · ");
     }
-    return personRow(r.name + (r.uid === S.uid ? " (you)" : ""), detail, extras);
+    return personRow(r.name, detail, extras);
   }));
 
-  if (admin) {
-    $("rosterCount").textContent = S.roster.length;
-    $("rosterList").hidden = S.roster.length === 0;
-    $("rosterList").replaceChildren(...S.roster.map((p) =>
-      personRow(p.name, p.email || "No sign-in", [smallBtn("Remove", "", () => removePerson(p.id))])));
-    $("knownEmails").replaceChildren(...Object.values(S.profiles).map((p) => {
-      const o = document.createElement("option");
-      o.value = p.email;
-      if (p.name) o.label = p.name;
-      return o;
-    }));
-    $("adminCount").textContent = S.admins.length;
-    $("adminList").replaceChildren(...S.admins.map((a) =>
-      personRow(a.email, a.email === S.email ? "You" : "",
-        a.email === S.email ? [] : [smallBtn("Remove", "", () => removeAdmin(a.email))])));
-  }
+  $("rosterCount").textContent = S.roster.length;
+  $("rosterList").hidden = S.roster.length === 0;
+  $("rosterList").replaceChildren(...S.roster.map((p) =>
+    personRow(p.name, "", [smallBtn("Remove", "", () => removePerson(p.id))])));
+  $("adminCount").textContent = S.admins.length;
+  $("adminList").replaceChildren(...S.admins.map((a) =>
+    personRow(a.email, a.email === S.email ? "You" : "",
+      a.email === S.email ? [] : [smallBtn("Remove", "", () => removeAdmin(a.email))])));
 }
 
 function render() {
-  if (!S.uid) return;
+  if (!sb || $("appScreen").hidden) return;
   applyView();
   renderStatus();
   renderMine();
-  const st = rollState();
-  renderLists(st);
   if (S.isAdmin && S.view === "admin") {
+    const st = rollState();
+    renderAdminLists(st);
     renderPerformance(st);
     renderHistory();
     renderPoints();
@@ -597,17 +614,17 @@ function render() {
 
 // ---------- actions: staff ----------
 
-async function saveName() {
-  const name = $("myName").value.trim().slice(0, 60);
-  const prof = S.profiles[S.uid];
-  if (!name || (prof && prof.name === name)) return;
-  await q(sb.from("profiles").upsert({ id: S.uid, email: S.email, name, updated_at: new Date().toISOString() }));
-}
-
 async function checkIn(status) {
   const ev = S.event;
   if (!ev || !ev.active || S.busy) return;
   showError("");
+  const name = $("myName").value.trim().replace(/\s+/g, " ").slice(0, 60);
+  if (!name) {
+    setGps("far", "Enter your full name first, so admins can tick you off the list.");
+    $("myName").focus();
+    return;
+  }
+  rememberName(name);
   const point = ev.point;
   const radius = (point && point.radius) || DEFAULT_RADIUS;
   let coords = null, dist = null;
@@ -639,17 +656,19 @@ async function checkIn(status) {
     }
   }
 
-  const me = current().find((c) => c.user_id === S.uid);
-  const now = new Date().toISOString();
   const ok = await run(status === "safe" ? "check in" : "send your help request", async () => {
-    await saveName();
-    await q(sb.from("checkins").upsert({
-      event_id: ev.id, user_id: S.uid, status,
-      note: $("note").value.trim().slice(0, 80) || null,
-      distance_m: dist != null ? Math.round(dist) : null,
-      accuracy_m: coords ? Math.round(coords.accuracy) : null,
-      first_at: me ? me.first_at : now, at: now,
-    }));
+    try {
+      S.mine = await q(sb.rpc("public_checkin", {
+        p_event: ev.id, p_device: deviceId(), p_name: name, p_status: status,
+        p_note: $("note").value.trim().slice(0, 80) || null,
+        p_distance: dist != null ? Math.round(dist) : null,
+        p_accuracy: coords ? Math.round(coords.accuracy) : null,
+      }));
+    } catch (e) {
+      if (e.code === "42501") e.userMessage = "Check-in was refused: the evacuation may have ended, or you were outside " + radius + " m of the point. Refresh the page and try again.";
+      if (e.code === "22023") e.userMessage = "Enter your full name, then tap again.";
+      throw e;
+    }
   });
   setGps(ok ? "ok" : "", ok ? (status === "safe" ? "Checked in. Stay at the assembly point until you're told it's safe." : "Help request sent. Stay where you are if it's safe to do so.") : "");
 }
@@ -725,8 +744,11 @@ function removeAdmin(email) {
 
 $("btnSafe").addEventListener("click", () => checkIn("safe"));
 $("btnHelp").addEventListener("click", () => checkIn("help"));
-$("myName").addEventListener("change", () => { saveName().catch(() => showError("Couldn't save your name. Check your connection.")); });
-$("signOut").addEventListener("click", () => sb.auth.signOut());
+$("myName").addEventListener("change", () => rememberName($("myName").value.trim()));
+$("authToggle").addEventListener("click", () => {
+  if (S.uid) sb.auth.signOut();
+  else { setAuthMode("signin"); showScreen("signin"); }
+});
 
 $("tabUser").addEventListener("click", (e) => { e.preventDefault(); S.view = "user"; history.replaceState(null, "", "#checkin"); render(); });
 $("tabAdmin").addEventListener("click", (e) => { e.preventDefault(); S.view = "admin"; history.replaceState(null, "", "#admin"); render(); });
@@ -777,12 +799,11 @@ $("targetForm").addEventListener("submit", (e) => {
 });
 $("addPersonForm").addEventListener("submit", (e) => {
   e.preventDefault();
-  const name = $("personName").value.trim().slice(0, 60);
-  const email = $("personEmail").value.trim().toLowerCase() || null;
+  const name = $("personName").value.trim().replace(/\s+/g, " ").slice(0, 60);
   if (!name) { showError("Type a name before tapping Add."); return; }
-  if (email && S.roster.some((p) => p.email === email)) { showError(email + " is already on the list."); return; }
-  $("personName").value = ""; $("personEmail").value = "";
-  run("add this person", () => q(sb.from("roster").insert({ name, email })));
+  if (S.roster.some((p) => normName(p.name) === normName(name))) { showError(name + " is already on the list."); return; }
+  $("personName").value = "";
+  run("add this person", () => q(sb.from("roster").insert({ name })));
 });
 $("addAdminForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -792,13 +813,12 @@ $("addAdminForm").addEventListener("submit", (e) => {
   run("add this admin", () => q(sb.from("admins").upsert({ email })));
 });
 
-// ---------- sign-in ----------
+// ---------- admin sign-in ----------
 
 const AUTH_MODES = {
-  signin: { title: "Sign in", intro: "Use your work email so admins can match you to the staff list.", button: "Sign in", password: "Password", autocomplete: "current-password" },
-  signup: { title: "Create an account", intro: "Use your work email so admins can match you to the staff list.", button: "Create account", password: "Choose a password (at least 8 characters)", autocomplete: "new-password" },
+  signin: { title: "Admin sign in", intro: "Only admins sign in. Staff don't need an account to check in.", button: "Sign in", password: "Password", autocomplete: "current-password" },
   forgot: { title: "Reset your password", intro: "We'll email you a link to choose a new password.", button: "Send reset link" },
-  reset: { title: "Choose a new password", intro: "Enter a new password for your account.", button: "Save new password", password: "New password (at least 8 characters)", autocomplete: "new-password" },
+  reset: { title: "Choose a new password", intro: "Enter a new password for your admin account.", button: "Save new password", password: "New password (at least 8 characters)", autocomplete: "new-password" },
 };
 let authMode = "signin", recoverySession = null;
 
@@ -808,15 +828,14 @@ function setAuthMode(mode) {
   $("authTitle").textContent = m.title;
   $("authIntro").textContent = m.intro;
   $("authBtn").textContent = m.button;
-  $("nameField").hidden = mode !== "signup";
   $("emailField").hidden = mode === "reset";
   $("email").required = mode !== "reset";
   $("passwordField").hidden = mode === "forgot";
   $("password").required = mode !== "forgot";
   if (m.password) { $("passwordLabel").textContent = m.password; $("password").autocomplete = m.autocomplete; }
-  $("toSignup").hidden = mode !== "signin";
+  $("toCheckin").hidden = mode === "reset";
   $("toForgot").hidden = mode !== "signin";
-  $("toSignin").hidden = mode === "signin" || mode === "reset";
+  $("toSignin").hidden = mode !== "forgot";
   $("oauthButtons").hidden = mode !== "signin";
   $("authNote").hidden = true;
   showError("");
@@ -830,8 +849,7 @@ function authNote(text) {
 function authErrorText(error) {
   const msg = (error && error.message) || "";
   if (/invalid login credentials/i.test(msg)) return "Email or password is wrong. Check them and try again, or use “Forgot password?”.";
-  if (/email not confirmed/i.test(msg)) return "Confirm your email first: open the link we sent when you created the account, then sign in.";
-  if (/already registered|already been registered/i.test(msg)) return "An account with this email already exists. Sign in instead, or reset your password.";
+  if (/email not confirmed/i.test(msg)) return "This login hasn't been confirmed. In Supabase, open Authentication → Users and confirm it, or recreate it with “Auto confirm” ticked.";
   if (/password/i.test(msg) && /(short|least|weak)/i.test(msg)) return "That password is too short or too common. Use at least 8 characters.";
   if (/rate|too many/i.test(msg)) return "Too many attempts. Wait a few minutes, then try again.";
   return "Couldn't complete that: " + msg;
@@ -840,9 +858,8 @@ function authErrorText(error) {
 function setupSignin() {
   const providers = options.providers || ["email"];
   $("authForm").hidden = !providers.includes("email");
-  $("authLinks").hidden = !providers.includes("email");
   setAuthMode("signin");
-  $("toSignup").addEventListener("click", () => setAuthMode("signup"));
+  $("toCheckin").addEventListener("click", () => { showError(""); showScreen("app"); render(); });
   $("toForgot").addEventListener("click", () => setAuthMode("forgot"));
   $("toSignin").addEventListener("click", () => setAuthMode("signin"));
   const labels = { google: "Sign in with Google", azure: "Sign in with Microsoft" };
@@ -861,27 +878,18 @@ function setupSignin() {
     const email = $("email").value.trim().toLowerCase();
     const password = $("password").value;
     const back = location.origin + location.pathname;
-    if (authMode !== "forgot" && password.length < 8) { showError("Use a password of at least 8 characters."); return; }
+    if (authMode !== "forgot" && password.length < 8 && authMode === "reset") { showError("Use a password of at least 8 characters."); return; }
     $("authBtn").disabled = true;
     showError(""); authNote("");
     try {
       if (authMode === "signin") {
         const { error } = await sb.auth.signInWithPassword({ email, password });
         if (error) return showError(authErrorText(error));
-      } else if (authMode === "signup") {
-        const name = $("signupName").value.trim().slice(0, 60);
-        if (!name) return showError("Enter your name so admins can recognise you.");
-        const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name }, emailRedirectTo: back } });
-        if (error) return showError(authErrorText(error));
-        if (!data.session) {
-          setAuthMode("signin");
-          $("email").value = email;
-          authNote("Account created. Open the confirmation email sent to " + email + ", then sign in here.");
-        }
+        $("password").value = "";
       } else if (authMode === "forgot") {
         const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: back });
         if (error) return showError(authErrorText(error));
-        authNote("If " + email + " has an account, a reset link is on its way. Open it on this device.");
+        authNote("If " + email + " has an admin login, a reset link is on its way. Open it on this device.");
       } else if (authMode === "reset") {
         const { error } = await sb.auth.updateUser({ password });
         if (error) return showError(authErrorText(error));
@@ -889,8 +897,8 @@ function setupSignin() {
         const session = recoverySession;
         recoverySession = null;
         setAuthMode("signin");
-        if (session && S.uid === session.user.id) showScreen("app");
-        else if (session) onSession(session);
+        S.started = false; // re-run even if this admin was already loaded behind the reset screen
+        await onSession(session);
       }
     } finally {
       $("authBtn").disabled = false;
@@ -902,26 +910,21 @@ async function onSession(session) {
   const uid = session && session.user ? session.user.id : null;
   if (S.started && uid === S.uid) return;
   S.started = true;
-  if (!uid) {
-    S.uid = null; S.email = null; S.isAdmin = false;
-    if (channel) { sb.removeChannel(channel); channel = null; }
-    showScreen("signin");
-    return;
-  }
   S.uid = uid;
-  S.email = (session.user.email || "").toLowerCase();
-  showScreen("app");
-  try {
-    const meta = session.user.user_metadata || {};
-    const existing = await q(sb.from("profiles").select("name").eq("id", uid));
-    const name = (existing[0] && existing[0].name) || meta.full_name || meta.name || null;
-    await q(sb.from("profiles").upsert({ id: uid, email: S.email, name, updated_at: new Date().toISOString() }));
-    S.isAdmin = !!(await q(sb.rpc("is_admin")));
-  } catch (e) {
-    console.error(e);
-    showError("Signed in, but couldn't load your profile. Check your connection and reload.");
+  S.email = uid ? (session.user.email || "").toLowerCase() : null;
+  S.isAdmin = false;
+  if (uid) {
+    try { S.isAdmin = !!(await q(sb.rpc("is_admin"))); }
+    catch (e) { console.error(e); }
+    if (!S.isAdmin) {
+      await sb.auth.signOut();
+      showScreen("signin");
+      showError("This login isn't on the admin list. Ask an existing admin to add " + S.email + " under Admins.");
+      return;
+    }
   }
   S.view = S.isAdmin && location.hash !== "#checkin" ? "admin" : "user";
+  showScreen("app");
   subscribe();
   await refreshAll();
 }
@@ -931,7 +934,7 @@ function main() {
   sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   setupSignin();
   sb.auth.onAuthStateChange((event, session) => {
-    // A password-reset link signs the person in; ask for the new password before opening the app.
+    // A password-reset link signs the admin in; ask for the new password before opening the app.
     if (event === "PASSWORD_RECOVERY") {
       recoverySession = session;
       setTimeout(() => { setAuthMode("reset"); showScreen("signin"); }, 0);
@@ -940,9 +943,9 @@ function main() {
     if (recoverySession) return;
     setTimeout(() => onSession(session), 0);
   });
-  // Keep timers fresh and recover from missed realtime messages; reads only.
-  setInterval(() => { if (S.uid && S.event && S.event.active) refreshAll(); }, 20000);
-  setInterval(() => { if (S.uid) renderStatus(); }, 15000);
+  // Keep counts and timers fresh (staff don't get live check-in updates); reads only.
+  setInterval(() => { if (S.event && S.event.active) refreshAll(); }, 15000);
+  setInterval(() => { if (!$("appScreen").hidden) renderStatus(); }, 15000);
 }
 
 main();

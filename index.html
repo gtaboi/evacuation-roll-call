@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 <div class="wrap">
@@ -43,13 +43,9 @@
 
   <!-- SIGN IN -->
   <section class="card signin" id="signinScreen" hidden>
-    <h2 id="authTitle">Sign in</h2>
-    <p class="hint" style="margin:0" id="authIntro">Use your work email so admins can match you to the staff list.</p>
+    <h2 id="authTitle">Admin sign in</h2>
+    <p class="hint" style="margin:0" id="authIntro">Only admins sign in. Staff don't need an account to check in.</p>
     <form class="section" id="authForm" style="width:100%">
-      <div class="field" id="nameField" hidden>
-        <label for="signupName">Your name</label>
-        <input id="signupName" type="text" maxlength="60" autocomplete="name" placeholder="As your colleagues know you">
-      </div>
       <div class="field" id="emailField">
         <label for="email">Work email</label>
         <input id="email" type="email" autocomplete="username" required placeholder="name@company.com">
@@ -62,7 +58,7 @@
     </form>
     <p class="hint" id="authNote" hidden></p>
     <div class="row" style="width:100%" id="authLinks">
-      <button class="linkish" type="button" id="toSignup">Create an account</button>
+      <button class="linkish" type="button" id="toCheckin">Back to check-in</button>
       <button class="linkish" type="button" id="toForgot">Forgot password?</button>
       <button class="linkish" type="button" id="toSignin" hidden>Back to sign in</button>
     </div>
@@ -73,7 +69,7 @@
   <div id="appScreen" class="wrap" style="max-width:none" hidden>
     <div class="row">
       <div class="who-am-i"><span id="meLabel"></span></div>
-      <button class="linkish" id="signOut">Sign out</button>
+      <button class="linkish" id="authToggle">Admin sign in</button>
     </div>
 
     <nav class="tabs" id="tabs" aria-label="View" hidden>
@@ -100,8 +96,8 @@
       </div>
       <div class="gps" id="gps" hidden><div class="text" id="gpsText"></div></div>
       <div class="field">
-        <label for="myName">Your name</label>
-        <input id="myName" type="text" maxlength="60" autocomplete="name" placeholder="As your colleagues know you">
+        <label for="myName">Full name</label>
+        <input id="myName" type="text" maxlength="60" autocomplete="name" required placeholder="As it appears on the staff list">
       </div>
       <div class="field">
         <label for="note">Note (optional)</label>
@@ -146,8 +142,7 @@
       <ul class="roster missing" id="missingList"></ul>
     </section>
 
-    <!-- BOTH VIEWS -->
-    <section class="section" aria-labelledby="listHead">
+    <section class="section" data-view="admin" aria-labelledby="listHead">
       <div class="row"><h2 id="listHead">Checked in</h2><span class="mono hint" id="rollMeta"></span></div>
       <ul class="roster" id="roster" hidden></ul>
       <div class="msg info" id="emptyRoster">No one has checked in yet.</div>
@@ -209,14 +204,10 @@
       <details class="editor">
         <summary><h2>Expected staff · <span class="mono" id="rosterCount">0</span></h2></summary>
         <div class="body">
-          <p class="hint">Add each person's work email so their check-in is matched automatically. Leave email empty for visitors or contractors; you mark them safe yourself.</p>
-          <form class="field" id="addPersonForm">
-            <div class="coords" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto">
-              <div class="field"><label for="personName">Name</label><input id="personName" type="text" maxlength="60" required></div>
-              <div class="field"><label for="personEmail">Email (optional)</label><input id="personEmail" type="email" list="knownEmails"></div>
-              <div class="field"><label>&nbsp;</label><button class="btn" type="submit">Add</button></div>
-            </div>
-            <datalist id="knownEmails"></datalist>
+          <p class="hint">Use each person's full name. A check-in with the same name (ignoring capitals and extra spaces) counts them as accounted for. Anyone who doesn't check in can be marked safe by hand.</p>
+          <form class="inline" id="addPersonForm">
+            <input id="personName" type="text" maxlength="60" required placeholder="Full name" aria-label="Full name" style="font:inherit;padding:10px 12px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);flex:1;min-width:0">
+            <button class="btn" type="submit">Add</button>
           </form>
           <ul class="roster" id="rosterList" hidden></ul>
         </div>
@@ -227,7 +218,7 @@
       <details class="editor">
         <summary><h2>Admins · <span class="mono" id="adminCount">0</span></h2></summary>
         <div class="body">
-          <p class="hint">Admins start and end evacuations, see performance and manage these lists. Everyone else who signs in gets the check-in view.</p>
+          <p class="hint">Admins start and end evacuations, see performance and manage these lists. Each admin also needs a login: create it in Supabase under Authentication → Users → Add user, with the same email.</p>
           <form class="inline" id="addAdminForm">
             <input id="adminEmail" type="email" placeholder="name@company.com" required style="font:inherit;padding:10px 12px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);flex:1;min-width:0">
             <button class="btn" type="submit">Add admin</button>
@@ -238,9 +229,9 @@
     </section>
   </div>
 
-  <footer id="footer" hidden>Location is only read when you tap a check-in button and is not stored, only your distance from the point.</footer>
+  <footer id="footer" hidden>Location is only read when you tap a check-in button. Only your distance from the point is stored, not where you are. This phone remembers your name so you can update your check-in.</footer>
 </div>
 <!-- Bump ?v= on each release so phones don't keep an old cached copy. -->
-<script type="module" src="app.js?v=4"></script>
+<script type="module" src="app.js?v=5"></script>
 </body>
 </html>
