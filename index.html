@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 <div class="wrap">
@@ -227,6 +227,7 @@
 
   <footer id="footer">Location is only read when you tap a check-in button and is not stored, only your distance from the point.</footer>
 </div>
-<script type="module" src="app.js"></script>
+<!-- Bump ?v= on each release so phones don't keep an old cached copy. -->
+<script type="module" src="app.js?v=2"></script>
 </body>
 </html>
