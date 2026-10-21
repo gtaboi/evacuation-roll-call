@@ -13,6 +13,7 @@ There is no build step, package.json, linter or test suite. The site is plain ES
 - **Run locally:** serve the folder over HTTP (ES modules don't load from `file://`) and open `index.html`. Geolocation needs `localhost` or HTTPS.
 - **Syntax check:** `node --check` won't parse `app.js` as a module under its `.js` name; copy it to a `.mjs` file first and check that.
 - **Deploy:** push to `main`. GitHub Pages serves the repo root; `gh api repos/hermannwwr-cmyk/evacuation-roll-call/pages/builds/latest` shows the build status.
+- **Settings from `.env`:** `node tools/env-to-config.mjs` copies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `GOOGLE_MAPS_API_KEY` from the git-ignored `.env` into `config.js` (the only file the browser reads). It refuses non-`anon` Supabase keys. Bump `?v=` afterwards.
 - **Database changes:** there is no migration runner. SQL is pasted into the Supabase SQL Editor by the project owner.
 
 ## Release rule: bump the cache version

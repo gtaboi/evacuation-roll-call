@@ -49,6 +49,8 @@ export const SUPABASE_ANON_KEY = "eyJ...";
 
 The anon key is designed to be public; the database rules decide what each person can do. Commit and push; GitHub Pages redeploys in a minute or two.
 
+**Or keep the values in `.env`:** copy `.env.example` to `.env` (git ignores it), fill it in, and run `node tools/env-to-config.mjs` to write them into `config.js`. The browser can't read `.env`, so `config.js` is still what the site loads and what gets committed. The script refuses a `service_role` key.
+
 ### 4. Google Maps (optional)
 Setting assembly points works in three ways:
 - **Without a key:** **Pick on map** opens Google Maps in a new tab. Right-click (computer) or long-press (phone) the exact spot, copy the coordinates, and paste them into **Paste from Google Maps**. A full Google Maps link works too (short `maps.app.goo.gl` links don't).
