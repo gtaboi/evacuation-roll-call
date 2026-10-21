@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=2";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=3";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -828,7 +828,8 @@ function setupSignin() {
 
 async function onSession(session) {
   const uid = session && session.user ? session.user.id : null;
-  if (uid === S.uid) return;
+  if (S.started && uid === S.uid) return;
+  S.started = true;
   if (!uid) {
     S.uid = null; S.email = null; S.isAdmin = false;
     if (channel) { sb.removeChannel(channel); channel = null; }
