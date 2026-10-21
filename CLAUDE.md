@@ -11,10 +11,11 @@ Evacuation Roll Call: staff check in at an assembly point during an evacuation; 
 There is no build step, package.json, linter or test suite. The site is plain ES modules loaded straight by the browser; the Supabase client comes from jsDelivr (`@supabase/supabase-js@2.45.4/+esm`).
 
 - **Run locally:** serve the folder over HTTP (ES modules don't load from `file://`) and open `index.html`. Geolocation needs `localhost` or HTTPS.
-- **Syntax check:** `node --check` won't parse `app.js` as a module under its `.js` name; copy it to a `.mjs` file first and check that.
+- **Syntax check:** `node --check` won't parse `app.js` as a module under its `.js` name; copy it to a `.mjs` file first and check that. For the Edge Function (no Deno installed): `npx esbuild supabase/functions/assist/index.ts --format=esm --outfile=<tmp>/assist.js` catches TypeScript and syntax errors.
 - **Deploy:** push to `main`. GitHub Pages serves the repo root; `gh api repos/hermannwwr-cmyk/evacuation-roll-call/pages/builds/latest` shows the build status.
-- **Settings from `.env`:** `node tools/env-to-config.mjs` copies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `GOOGLE_MAPS_API_KEY` from the git-ignored `.env` into `config.js` (the only file the browser reads). It refuses non-`anon` Supabase keys. Bump `?v=` afterwards.
-- **Database changes:** there is no migration runner. SQL is pasted into the Supabase SQL Editor by the project owner.
+- **Settings from `.env`:** `node tools/env-to-config.mjs` copies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `GOOGLE_MAPS_API_KEY` from the git-ignored `.env` into `config.js` (the only file the browser reads). It refuses non-`anon` Supabase keys. Bump `?v=` afterwards. `.env` also holds `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`, which are never copied anywhere: they're a local reference copy for calling the LLM directly. The deployed function reads its own Supabase secrets.
+- **Owner-only steps:** there is no migration runner and no Supabase CLI login here. SQL files are pasted into the Supabase SQL Editor, and changes to `supabase/functions/assist/index.ts` only go live when the owner redeploys the function in the dashboard. Function secrets override the code's defaults, so changing a default such as the model also needs the `LLM_MODEL` secret updated. Pushing to GitHub doesn't affect either.
+- **Testing against live data:** there is one Supabase project, and it's production. Admin REST calls can be made from the signed-in Browser pane using the session in `localStorage` (`sb-<project-ref>-auth-token`). A test evacuation is briefly visible to anyone on the staff page, so delete it (and any test `roster` rows) afterwards; deleting the `events` row cascades to its check-ins, marks and summary.
 
 ## Release rule: bump the cache version
 
@@ -28,7 +29,7 @@ Pages caches files for ~10 minutes and phones keep stale copies, so asset URLs c
 
 **Data model** (`supabase/schema.sql`):
 - `events`: the newest row is "the current event". Starting an event deactivates any active one and inserts a new row. `events.point` holds a snapshot of the dry- or wet-weather assembly point (`{name, directions, lat, lng, radius}`), copied from `settings.points` at start or switch time. Later edits to settings don't affect a running event until an admin taps "Send point to staff".
-- `checkins`: primary key `(event_id, device_id)`. Stores distance and accuracy, never coordinates.
+- `checkins`: primary key `(event_id, device_id)`. Stores distance and accuracy, never coordinates. `note` is no longer collected (the staff form has no note field) and is always null for new check-ins.
 - `roster` (expected staff) is matched to check-ins **by normalized name** (trimmed, collapsed spaces, lowercase) in the client (`normName` / `rollState` in `app.js`). `marks` records admin "Mark safe" per event and roster entry.
 - `event_summaries`: written by the client when an admin ends an event (times, t50/t90/t100). Performance history is read only from here.
 - `settings`: a single row (`id = 1`) holding the target minutes and both assembly points.
@@ -42,14 +43,14 @@ Pages caches files for ~10 minutes and phones keep stale copies, so asset URLs c
 
 **`config.js`** holds the Supabase URL and the **anon** key (public by design; RLS and the functions are the security boundary), plus `options.providers`, `options.defaultRadiusM` and the optional `options.googleMapsApiKey`. An empty URL or key shows the setup screen.
 
-**AI helper** (`supabase/functions/assist/index.ts`, a Deno Supabase Edge Function): the only server-side code. The browser calls it with `sb.functions.invoke("assist", {body: {task, event_id}})`, task `match` or `report`. It creates a Supabase client with the caller's own JWT, checks `is_admin()`, reads data under normal RLS, and calls an OpenAI-compatible `/chat/completions` endpoint configured by the function secrets `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY` (OpenCode Go + `glm-5.3-flash`; Go rejects requests without an `x-opencode-session` header). `match` validates the model's JSON against the real names before returning. Accepting a match upserts a `marks` row with `checkin_device` set, which `rollState()` treats as "this check-in is that roster person" (a mark without `checkin_device` means "marked safe by an admin"). Debriefs are saved into `event_summaries.data.report`. The function can't be run locally here (no Deno); deploy it through the Supabase dashboard or CLI.
+**AI helper** (`supabase/functions/assist/index.ts`, a Deno Supabase Edge Function): the only server-side code. The browser calls it with `sb.functions.invoke("assist", {body: {task, event_id}})`, task `match` or `report`. It creates a Supabase client with the caller's own JWT, checks `is_admin()`, reads data under normal RLS, and calls an OpenAI-compatible `/chat/completions` endpoint configured by the function secrets `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY` (OpenCode Go + `glm-5.3-flash`; Go rejects requests without an `x-opencode-session` header and, for some models, intermittently answers 429 "Endpoint is unavailable", hence the retries in `llm()`; `deepseek-v4.1-flash` was dropped for that reason). `match` validates the model's JSON against the real names before returning. Accepting a match upserts a `marks` row with `checkin_device` set, which `rollState()` treats as "this check-in is that roster person" (a mark without `checkin_device` means "marked safe by an admin"). Debriefs are saved into `event_summaries.data.report`. The function can't be run locally here (no Deno); deploy it through the Supabase dashboard or CLI.
 
 **Google Maps** is used only in the admin "Assembly points" form and is loaded lazily (`loadGoogleMaps()`), only when a key is set. Place suggestions use the Places API (New) programmatic `AutocompleteSuggestion` (the legacy `Autocomplete` widget isn't available to new Google Cloud customers). The map picker keeps a fixed CSS pin over the map centre and reads `map.getCenter()`, so it needs no marker library or Map ID. Without a key, "Pick on map" opens google.com/maps in a new tab, and `parseCoords()` reads pasted `lat, lng` text or full Maps links from each point's "Paste from Google Maps" box. Latitude, longitude and radius are hidden inputs (no visible fields); radius is always `defaultRadiusM` when a point is saved.
 
 ## SQL files
 
 - `supabase/schema.sql` is the fresh-install script and must always describe the current full state.
-- Existing projects upgrade with numbered files (`supabase/002-name-only-checkin.sql`). For any schema change, update `schema.sql` **and** add the next numbered upgrade file.
+- Existing projects upgrade with numbered files (`supabase/002-…sql`, `003-…sql`; the live project has run all of them). For any schema change, update `schema.sql` **and** add the next numbered upgrade file.
 - The committed `schema.sql` keeps `you@example.com` as the first-admin placeholder on its last line. The owner's local copy may have a real address there that shouldn't be committed.
 
 ## `evacuation-roll-call.html`
