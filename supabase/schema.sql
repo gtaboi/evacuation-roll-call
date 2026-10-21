@@ -54,8 +54,10 @@ create table if not exists public.marks (
   roster_id uuid not null references public.roster on delete cascade,
   status text not null default 'safe' check (status in ('safe', 'help')),
   at timestamptz not null default now(),
+  checkin_device text,       -- set when an admin links this person to a check-in whose typed name didn't match
   primary key (event_id, roster_id)
 );
+alter table public.marks add column if not exists checkin_device text;
 
 create table if not exists public.event_summaries (
   event_id bigint primary key references public.events on delete cascade,

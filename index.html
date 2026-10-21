@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="styles.css?v=9">
+<link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 <div class="wrap">
@@ -140,6 +140,10 @@
 
     <section class="section" data-view="admin" aria-labelledby="listHead">
       <div class="row"><h2 id="listHead">Checked in</h2><span class="mono hint" id="rollMeta"></span></div>
+      <div class="card" id="matchCard" hidden>
+        <div class="row"><p class="hint" id="matchHint" style="margin:0"></p><button class="btn small" type="button" id="matchBtn">Suggest matches</button></div>
+        <ul class="roster" id="matchList" hidden></ul>
+      </div>
       <ul class="roster" id="roster" hidden></ul>
       <div class="msg info" id="emptyRoster">No one has checked in yet.</div>
     </section>
@@ -187,7 +191,12 @@
           <tbody id="histBody"></tbody>
         </table>
       </div>
-      <div class="msg info" id="histEmpty">Finished evacuations and drills appear here, with how fast everyone was accounted for. Select one to see its curve.</div>
+      <div class="msg info" id="histEmpty">Finished evacuations and drills appear here, with how fast everyone was accounted for. Select one to see its curve and write an AI debrief.</div>
+      <div class="card" id="reportCard" hidden>
+        <div class="row"><h2 id="reportHead">Debrief</h2><button class="btn small" type="button" id="reportBtn">Write debrief</button></div>
+        <p class="report" id="reportText"></p>
+        <p class="hint" id="reportMeta" style="margin:0"></p>
+      </div>
     </section>
 
     <section class="section" data-view="admin">
@@ -231,6 +240,6 @@
   <footer id="footer" hidden>Location is only read when you tap a check-in button. Only your distance from the point is stored, not where you are. This phone remembers your name so you can update your check-in.</footer>
 </div>
 <!-- Bump ?v= on each release so phones don't keep an old cached copy. -->
-<script type="module" src="app.js?v=9"></script>
+<script type="module" src="app.js?v=10"></script>
 </body>
 </html>

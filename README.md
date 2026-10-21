@@ -64,7 +64,24 @@ To add the key:
 
 The key is visible to anyone who opens the site, like every browser Maps key; the website restriction is what stops others using it.
 
-### 5. First run (as admin)
+### 5. AI helper (optional)
+Admins get two AI features, powered by an OpenAI-compatible LLM (set up for **OpenCode Go** with **DeepSeek V4.1 Flash**):
+- **Suggest matches:** when a check-in's typed name isn't on the staff list (typos, nicknames, initials), it suggests the likely person. **Link** counts that check-in for them.
+- **Debrief:** select a past evacuation and tap **Write debrief** for a short summary: result against the target, who needed help, was late or never accounted for, and what to improve.
+
+The LLM key must stay secret, so these run in a Supabase Edge Function ([`supabase/functions/assist/index.ts`](supabase/functions/assist/index.ts)), never in the browser. It reads data with the admin's own login, so the database rules still apply. Staff names and check-in times are sent to the LLM provider.
+
+To switch it on:
+1. Run [`supabase/003-link-checkins.sql`](supabase/003-link-checkins.sql) in the SQL Editor (fresh installs already have it in `schema.sql`).
+2. Supabase → **Edge Functions → Deploy a new function → Via Editor**, name it `assist`, paste the contents of `supabase/functions/assist/index.ts`, and deploy. (Or with the Supabase CLI: `supabase functions deploy assist --project-ref <project-ref>`.)
+3. Supabase → **Edge Functions → Secrets**, add:
+   - `LLM_API_KEY`: your OpenCode Go key
+   - `LLM_BASE_URL`: `https://opencode.ai/zen/go/v1`
+   - `LLM_MODEL`: `deepseek-v4.1-flash`
+
+Any OpenAI-compatible provider works by changing those three secrets. The function sends OpenCode Go's `x-opencode-session` header, which other providers ignore.
+
+### 6. First run (as admin)
 1. Open the site, tap **Admin sign in**, and sign in.
 2. **Assembly points:** for each one, search or type a name, set the exact spot (**Pick on map** or **Use my location**), add directions, and **Save**. Use **Check on map** to confirm the pin.
 3. **Expected staff:** add each person's full name, spelled the way they'll type it.

@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=9";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=10";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -17,6 +17,9 @@ const S = {
   settings: { target_min: 10, points: {} },
   admins: [],
   selected: null,       // event_id shown in the chart; null = current
+  matches: [],          // admin: AI-suggested links {device_id, checkin_name, roster_id, roster_name, reason}
+  matching: false,
+  reporting: false,
   busy: false,
 };
 let sb = null, channel = null;
@@ -205,23 +208,34 @@ function timeTo(times, expected, share) {
   return times.length >= need ? times[need - 1] : null;
 }
 
+// A check-in belongs to a staff-list person by exact (normalized) name, or by an admin link
+// (a mark carrying checkin_device). Plain marks without a device are "marked safe by an admin".
 function rollState() {
   const ev = S.event;
-  const checkedNames = new Set(S.checkins.map((c) => normName(c.name)));
-  const rows = S.checkins.map((c) => ({
-    key: c.device_id, name: c.name, status: c.status, note: c.note,
-    distance: c.distance_m, accuracy: c.accuracy_m, at: ms(c.at), firstAt: ms(c.first_at), marked: false,
-    onRoster: S.roster.some((p) => normName(p.name) === normName(c.name)),
-  }));
+  const rosterById = new Map(S.roster.map((p) => [p.id, p]));
+  const rosterByName = new Map(S.roster.map((p) => [normName(p.name), p]));
+  const linkByDevice = new Map(Object.values(S.marks).filter((m) => m.checkin_device).map((m) => [m.checkin_device, m.roster_id]));
+  const matched = new Set();
+  const rows = S.checkins.map((c) => {
+    const linkedId = linkByDevice.get(c.device_id);
+    const p = (linkedId && rosterById.get(linkedId)) || rosterByName.get(normName(c.name));
+    if (p) matched.add(p.id);
+    return {
+      key: c.device_id, device: c.device_id, name: c.name, status: c.status, note: c.note,
+      distance: c.distance_m, accuracy: c.accuracy_m, at: ms(c.at), firstAt: ms(c.first_at), marked: false,
+      onRoster: !!p, linkedTo: linkedId && p ? p : null,
+    };
+  });
   for (const p of S.roster) {
-    if (checkedNames.has(normName(p.name))) continue;
+    if (matched.has(p.id)) continue;
     const m = S.marks[p.id];
-    if (m) rows.push({ key: p.id, name: p.name, status: m.status, at: ms(m.at), firstAt: ms(m.at), marked: true, rosterId: p.id, onRoster: true });
+    if (m && !m.checkin_device) rows.push({ key: p.id, name: p.name, status: m.status, at: ms(m.at), firstAt: ms(m.at), marked: true, rosterId: p.id, onRoster: true });
   }
   rows.sort((a, b) => (a.status === "help" ? 0 : 1) - (b.status === "help" ? 0 : 1) || b.at - a.at);
-  const missing = ev ? S.roster.filter((p) => !checkedNames.has(normName(p.name)) && !S.marks[p.id]) : [];
+  const missing = ev ? S.roster.filter((p) => !matched.has(p.id) && !(S.marks[p.id] && !S.marks[p.id].checkin_device)) : [];
+  const unmatched = rows.filter((r) => !r.marked && !r.onRoster);
   const times = ev ? rows.map((r) => Math.max(0, (r.firstAt - ms(ev.started_at)) / 1000)).sort((a, b) => a - b) : [];
-  return { rows, missing, times };
+  return { rows, missing, unmatched, times };
 }
 
 // ---------- rendering helpers ----------
@@ -525,6 +539,20 @@ function renderHistory() {
     tr.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
     return tr;
   }));
+
+  // AI debrief for the selected past evacuation.
+  const sel = S.selected != null && S.summaries.find((x) => x.event_id === S.selected);
+  $("reportCard").hidden = !sel;
+  if (sel) {
+    const d = sel.data;
+    $("reportHead").textContent = "Debrief · " + fmtDate(d.startedAt) + " " + fmtClock(d.startedAt);
+    $("reportText").textContent = d.report || "";
+    $("reportMeta").textContent = d.report
+      ? "Written by AI on " + fmtDate(d.reportAt) + " from this evacuation's numbers. Check it before sharing."
+      : "Writes a short summary of this evacuation: result against the target, who needed help or was late, and what to improve.";
+    $("reportBtn").textContent = S.reporting ? "Writing…" : d.report ? "Rewrite" : "Write debrief";
+    $("reportBtn").disabled = S.busy || S.reporting;
+  }
 }
 
 function renderPoints() {
@@ -575,10 +603,12 @@ function renderAdminLists(st) {
     t.textContent = fmtClock(r.at);
     const extras = [pill(r.status, r.status === "help" ? "Needs help" : "Safe"), t];
     if (r.marked) extras.push(smallBtn("Undo", "", () => setMark(r.rosterId, false)));
+    if (r.linkedTo) extras.push(smallBtn("Unlink", "", () => setMark(r.linkedTo.id, false)));
     let detail;
     if (r.marked) detail = "Marked safe by an admin";
     else {
       const bits = [];
+      if (r.linkedTo) bits.push("Linked to " + r.linkedTo.name);
       if (r.distance != null) bits.push(fmtM(r.distance) + " from point" + (r.accuracy ? " (±" + Math.round(r.accuracy) + " m)" : ""));
       else if (r.status === "help") bits.push("Location unknown");
       if (!r.onRoster && S.roster.length) bits.push("Not on staff list");
@@ -587,6 +617,24 @@ function renderAdminLists(st) {
     }
     return personRow(r.name, detail, extras);
   }));
+
+  // AI name matching: offered while typed names and missing staff are both left over.
+  const canMatch = !!(S.event && st.unmatched.length && st.missing.length);
+  $("matchCard").hidden = !canMatch && !S.matches.length;
+  $("matchHint").textContent = canMatch
+    ? st.unmatched.length + (st.unmatched.length === 1 ? " check-in doesn't" : " check-ins don't") + " match the staff list."
+    : "Suggested matches";
+  if (S.matchNote && !S.matches.length) $("matchHint").textContent = S.matchNote;
+  $("matchBtn").hidden = !canMatch;
+  $("matchBtn").disabled = S.busy || S.matching;
+  $("matchBtn").textContent = S.matching ? "Matching…" : "Suggest matches";
+  const live = S.matches.filter((m) => st.unmatched.some((r) => r.device === m.device_id) && st.missing.some((p) => p.id === m.roster_id));
+  $("matchList").hidden = live.length === 0;
+  $("matchList").replaceChildren(...live.map((m) =>
+    personRow(m.checkin_name + " → " + m.roster_name, m.reason || "Likely the same person", [
+      smallBtn("Link", "go", () => linkCheckin(m)),
+      smallBtn("Dismiss", "", () => { S.matches = S.matches.filter((x) => x !== m); render(); }),
+    ])));
 
   $("rosterCount").textContent = S.roster.length;
   $("rosterList").hidden = S.roster.length === 0;
@@ -728,8 +776,66 @@ function setMark(rosterId, safe) {
   const ev = S.event;
   if (!ev) return;
   return run("update this person", () => safe
-    ? q(sb.from("marks").upsert({ event_id: ev.id, roster_id: rosterId, status: "safe", at: new Date().toISOString() }))
+    ? q(sb.from("marks").upsert({ event_id: ev.id, roster_id: rosterId, status: "safe", at: new Date().toISOString(), checkin_device: null }))
     : q(sb.from("marks").delete().eq("event_id", ev.id).eq("roster_id", rosterId)));
+}
+
+// ---------- AI helper (Supabase Edge Function "assist") ----------
+
+async function callAssist(body) {
+  const { data, error } = await sb.functions.invoke("assist", { body });
+  if (!error) return data;
+  let msg = "";
+  const status = error.context && error.context.status;
+  try { msg = (await error.context.json()).error || ""; } catch { /* no JSON body */ }
+  if (!msg && (status === 404 || /Failed to send/i.test(error.message)))
+    msg = "The AI helper isn't set up yet: deploy the “assist” function in Supabase (see the README).";
+  const e = new Error(msg || error.message);
+  e.userMessage = msg || "The AI helper didn't answer. Try again in a moment.";
+  throw e;
+}
+
+async function suggestMatches() {
+  if (!S.event || S.matching) return;
+  S.matching = true; S.matchNote = ""; showError(""); render();
+  try {
+    const d = await callAssist({ task: "match", event_id: S.event.id });
+    S.matches = d.matches || [];
+    if (!S.matches.length) S.matchNote = "No likely matches. Mark people safe by hand if you've confirmed them.";
+  } catch (e) {
+    console.error(e);
+    showError(e.userMessage || "Couldn't get suggestions.");
+  } finally {
+    S.matching = false;
+    render();
+  }
+}
+
+function linkCheckin(m) {
+  const ev = S.event;
+  const c = S.checkins.find((x) => x.device_id === m.device_id);
+  if (!ev || !c) return;
+  S.matches = S.matches.filter((x) => x !== m);
+  return run("link this check-in", () => q(sb.from("marks").upsert({
+    event_id: ev.id, roster_id: m.roster_id, status: c.status, at: new Date().toISOString(), checkin_device: m.device_id,
+  })));
+}
+
+async function writeReport() {
+  const h = S.summaries.find((x) => x.event_id === S.selected);
+  if (!h || S.reporting) return;
+  S.reporting = true; showError(""); render();
+  try {
+    const d = await callAssist({ task: "report", event_id: h.event_id });
+    await run("save the debrief", () => q(sb.from("event_summaries")
+      .update({ data: { ...h.data, report: d.report, reportAt: Date.now() } }).eq("event_id", h.event_id)));
+  } catch (e) {
+    console.error(e);
+    showError(e.userMessage || "Couldn't write the debrief.");
+  } finally {
+    S.reporting = false;
+    render();
+  }
 }
 
 function removePerson(id) {
@@ -946,6 +1052,8 @@ $("pointsForm").addEventListener("click", (e) => {
   if (k) openPicker(k);
 });
 $("mapCancel").addEventListener("click", () => $("mapDialog").close());
+$("matchBtn").addEventListener("click", suggestMatches);
+$("reportBtn").addEventListener("click", writeReport);
 $("mapUse").addEventListener("click", () => {
   if (picker && pickerKey) {
     const c = picker.map.getCenter();
