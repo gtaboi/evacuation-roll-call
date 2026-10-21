@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=3";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=4";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -794,9 +794,57 @@ $("addAdminForm").addEventListener("submit", (e) => {
 
 // ---------- sign-in ----------
 
+const AUTH_MODES = {
+  signin: { title: "Sign in", intro: "Use your work email so admins can match you to the staff list.", button: "Sign in", password: "Password", autocomplete: "current-password" },
+  signup: { title: "Create an account", intro: "Use your work email so admins can match you to the staff list.", button: "Create account", password: "Choose a password (at least 8 characters)", autocomplete: "new-password" },
+  forgot: { title: "Reset your password", intro: "We'll email you a link to choose a new password.", button: "Send reset link" },
+  reset: { title: "Choose a new password", intro: "Enter a new password for your account.", button: "Save new password", password: "New password (at least 8 characters)", autocomplete: "new-password" },
+};
+let authMode = "signin", recoverySession = null;
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const m = AUTH_MODES[mode];
+  $("authTitle").textContent = m.title;
+  $("authIntro").textContent = m.intro;
+  $("authBtn").textContent = m.button;
+  $("nameField").hidden = mode !== "signup";
+  $("emailField").hidden = mode === "reset";
+  $("email").required = mode !== "reset";
+  $("passwordField").hidden = mode === "forgot";
+  $("password").required = mode !== "forgot";
+  if (m.password) { $("passwordLabel").textContent = m.password; $("password").autocomplete = m.autocomplete; }
+  $("toSignup").hidden = mode !== "signin";
+  $("toForgot").hidden = mode !== "signin";
+  $("toSignin").hidden = mode === "signin" || mode === "reset";
+  $("oauthButtons").hidden = mode !== "signin";
+  $("authNote").hidden = true;
+  showError("");
+}
+
+function authNote(text) {
+  $("authNote").textContent = text;
+  $("authNote").hidden = !text;
+}
+
+function authErrorText(error) {
+  const msg = (error && error.message) || "";
+  if (/invalid login credentials/i.test(msg)) return "Email or password is wrong. Check them and try again, or use “Forgot password?”.";
+  if (/email not confirmed/i.test(msg)) return "Confirm your email first: open the link we sent when you created the account, then sign in.";
+  if (/already registered|already been registered/i.test(msg)) return "An account with this email already exists. Sign in instead, or reset your password.";
+  if (/password/i.test(msg) && /(short|least|weak)/i.test(msg)) return "That password is too short or too common. Use at least 8 characters.";
+  if (/rate|too many/i.test(msg)) return "Too many attempts. Wait a few minutes, then try again.";
+  return "Couldn't complete that: " + msg;
+}
+
 function setupSignin() {
   const providers = options.providers || ["email"];
-  $("emailForm").hidden = !providers.includes("email");
+  $("authForm").hidden = !providers.includes("email");
+  $("authLinks").hidden = !providers.includes("email");
+  setAuthMode("signin");
+  $("toSignup").addEventListener("click", () => setAuthMode("signup"));
+  $("toForgot").addEventListener("click", () => setAuthMode("forgot"));
+  $("toSignin").addEventListener("click", () => setAuthMode("signin"));
   const labels = { google: "Sign in with Google", azure: "Sign in with Microsoft" };
   $("oauthButtons").replaceChildren(...providers.filter((p) => labels[p]).map((p) => {
     const b = document.createElement("button");
@@ -808,21 +856,45 @@ function setupSignin() {
     };
     return b;
   }));
-  $("emailForm").addEventListener("submit", async (e) => {
+  $("authForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const email = $("email").value.trim();
-    $("emailBtn").disabled = true;
-    showError("");
-    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
-    $("emailBtn").disabled = false;
-    if (error) {
-      showError(/rate/i.test(error.message)
-        ? "Too many sign-in emails were sent recently. Wait a few minutes, then try again."
-        : "Couldn't send the sign-in link: " + error.message);
-      return;
+    const email = $("email").value.trim().toLowerCase();
+    const password = $("password").value;
+    const back = location.origin + location.pathname;
+    if (authMode !== "forgot" && password.length < 8) { showError("Use a password of at least 8 characters."); return; }
+    $("authBtn").disabled = true;
+    showError(""); authNote("");
+    try {
+      if (authMode === "signin") {
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) return showError(authErrorText(error));
+      } else if (authMode === "signup") {
+        const name = $("signupName").value.trim().slice(0, 60);
+        if (!name) return showError("Enter your name so admins can recognise you.");
+        const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name }, emailRedirectTo: back } });
+        if (error) return showError(authErrorText(error));
+        if (!data.session) {
+          setAuthMode("signin");
+          $("email").value = email;
+          authNote("Account created. Open the confirmation email sent to " + email + ", then sign in here.");
+        }
+      } else if (authMode === "forgot") {
+        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: back });
+        if (error) return showError(authErrorText(error));
+        authNote("If " + email + " has an account, a reset link is on its way. Open it on this device.");
+      } else if (authMode === "reset") {
+        const { error } = await sb.auth.updateUser({ password });
+        if (error) return showError(authErrorText(error));
+        $("password").value = "";
+        const session = recoverySession;
+        recoverySession = null;
+        setAuthMode("signin");
+        if (session && S.uid === session.user.id) showScreen("app");
+        else if (session) onSession(session);
+      }
+    } finally {
+      $("authBtn").disabled = false;
     }
-    $("emailSent").hidden = false;
-    $("emailSent").textContent = "Check " + email + " for a sign-in link and open it on this device. It can take a minute to arrive.";
   });
 }
 
@@ -858,7 +930,16 @@ function main() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { showScreen("setup"); return; }
   sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   setupSignin();
-  sb.auth.onAuthStateChange((_event, session) => { setTimeout(() => onSession(session), 0); });
+  sb.auth.onAuthStateChange((event, session) => {
+    // A password-reset link signs the person in; ask for the new password before opening the app.
+    if (event === "PASSWORD_RECOVERY") {
+      recoverySession = session;
+      setTimeout(() => { setAuthMode("reset"); showScreen("signin"); }, 0);
+      return;
+    }
+    if (recoverySession) return;
+    setTimeout(() => onSession(session), 0);
+  });
   // Keep timers fresh and recover from missed realtime messages; reads only.
   setInterval(() => { if (S.uid && S.event && S.event.active) refreshAll(); }, 20000);
   setInterval(() => { if (S.uid) renderStatus(); }, 15000);

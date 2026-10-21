@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 <div class="wrap">
@@ -43,16 +43,29 @@
 
   <!-- SIGN IN -->
   <section class="card signin" id="signinScreen" hidden>
-    <h2>Sign in</h2>
-    <p class="hint" style="margin:0">Use your work email so admins can match you to the staff list.</p>
-    <form class="field" id="emailForm" style="width:100%" hidden>
-      <label for="email">Work email</label>
-      <div class="inline">
-        <input id="email" type="email" autocomplete="email" required placeholder="name@company.com">
-        <button class="btn" type="submit" id="emailBtn">Send sign-in link</button>
+    <h2 id="authTitle">Sign in</h2>
+    <p class="hint" style="margin:0" id="authIntro">Use your work email so admins can match you to the staff list.</p>
+    <form class="section" id="authForm" style="width:100%">
+      <div class="field" id="nameField" hidden>
+        <label for="signupName">Your name</label>
+        <input id="signupName" type="text" maxlength="60" autocomplete="name" placeholder="As your colleagues know you">
       </div>
+      <div class="field" id="emailField">
+        <label for="email">Work email</label>
+        <input id="email" type="email" autocomplete="username" required placeholder="name@company.com">
+      </div>
+      <div class="field" id="passwordField">
+        <label for="password" id="passwordLabel">Password</label>
+        <input id="password" type="password" autocomplete="current-password" minlength="8" required>
+      </div>
+      <button class="big safe" type="submit" id="authBtn" style="font-size:1.1rem;padding:14px 20px">Sign in</button>
     </form>
-    <p class="hint" id="emailSent" hidden></p>
+    <p class="hint" id="authNote" hidden></p>
+    <div class="row" style="width:100%" id="authLinks">
+      <button class="linkish" type="button" id="toSignup">Create an account</button>
+      <button class="linkish" type="button" id="toForgot">Forgot password?</button>
+      <button class="linkish" type="button" id="toSignin" hidden>Back to sign in</button>
+    </div>
     <div class="inline" id="oauthButtons"></div>
   </section>
 
@@ -228,6 +241,6 @@
   <footer id="footer" hidden>Location is only read when you tap a check-in button and is not stored, only your distance from the point.</footer>
 </div>
 <!-- Bump ?v= on each release so phones don't keep an old cached copy. -->
-<script type="module" src="app.js?v=3"></script>
+<script type="module" src="app.js?v=4"></script>
 </body>
 </html>

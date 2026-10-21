@@ -30,7 +30,14 @@ In Supabase → **Authentication → URL Configuration**:
 - **Site URL:** `https://hermannwwr-cmyk.github.io/evacuation-roll-call/`
 - **Redirect URLs:** add the same URL.
 
-Email sign-in links work out of the box. Supabase's built-in email sender only allows a few emails per hour, so before rolling out to many staff, set up your own SMTP under **Authentication → Emails → SMTP Settings**, or enable Google / Microsoft sign-in under **Authentication → Providers**. Then add `"google"` or `"azure"` to `providers` in `config.js`.
+People sign in with **email and password**, stored in Supabase Auth (passwords are hashed by Supabase; the app never sees them). Staff create their own account with **Create an account**, and **Forgot password?** emails a reset link.
+
+Choose how new accounts are confirmed, under **Authentication → Sign In / Providers → Email**:
+- **Confirm email on** (default): new staff get a confirmation email before they can sign in.
+- **Confirm email off**: staff can sign in straight after creating an account. Simpler, but anyone with the link can create an account, so keep the expected staff list up to date.
+- Or create accounts yourself under **Authentication → Users → Add user** with "Auto confirm" ticked, and hand out passwords.
+
+Supabase's built-in email sender only allows a few emails per hour (confirmations and resets). Before rolling out to many staff, set up your own SMTP under **Authentication → Emails → SMTP Settings**. Google / Microsoft sign-in can be added under **Authentication → Providers**; then add `"google"` or `"azure"` to `providers` in `config.js`.
 
 ### 3. Connect the app
 In Supabase → **Project Settings → API**, copy the **Project URL** and the **anon public** key into [`config.js`](config.js):
