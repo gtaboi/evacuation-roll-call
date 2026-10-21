@@ -1,0 +1,35 @@
+.app { --bg:#f4f6f3; --surface:#ffffff; --ink:#142019; --muted:#5b6a61; --line:#d6ddd7; --grid:#e6ebe7; --safe:#00794a; --safe-soft:#e1f2e9; --help:#c8102e; --help-soft:#fbe4e7; --idle:#8a6d00; --idle-soft:#fbf2d0; position:relative; width:100%; height:100%; background:var(--bg); color:var(--ink); font-family:var(--sans, system-ui, sans-serif); font-size:16px; line-height:1.5; padding:56px 16px 0; display:flex; flex-direction:column; gap:16px; box-sizing:border-box }
+.app * { box-sizing:border-box }
+.app-bar { position:absolute; left:0; right:0; top:0; height:46px; display:flex; justify-content:space-between; align-items:center; padding:6px 34px 0; font-size:15px; font-weight:700 }
+.app-head { display:flex; gap:12px; align-items:center }
+.app-sign { width:44px; height:44px; border-radius:6px; background:var(--safe); display:grid; place-items:center; flex:none }
+.app h1 { margin:0; font-size:24px; font-weight:900; line-height:1.1 }
+.app-head p { margin:2px 0 0; font-size:13px; color:var(--muted) }
+.app h2 { margin:0; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--muted) }
+.app-status { display:flex; gap:10px; align-items:center; padding:12px 14px; border-radius:8px; border:1px solid var(--help); background:var(--help-soft) }
+.app-dot { width:12px; height:12px; border-radius:50%; background:var(--help); flex:none }
+.app-status b { display:block; font-weight:800; font-size:15px } .app-status span { font-size:13px; color:var(--muted) }
+.app-point { display:flex; gap:12px; padding:14px; border-radius:8px; background:var(--safe); color:#ffffff }
+.app-point small { display:block; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; opacity:.85 }
+.app-point strong { display:block; font-size:21px; font-weight:900; line-height:1.2 } .app-point p { margin:4px 0 0; font-size:14px }
+.app-field { display:grid; gap:6px } .app-field label { font-size:13px; font-weight:600; color:var(--muted) }
+.app-input { padding:10px 12px; border-radius:6px; border:1px solid var(--line); background:var(--surface); min-height:46px; font-size:16px }
+.app-big { border-radius:10px; padding:17px; text-align:center; font-weight:900; font-size:21px }
+.app-safe { background:var(--safe); color:#ffffff } .app-helpb { border:2px solid var(--help); color:var(--help); font-size:16px; padding:12px }
+.app-gps { padding:10px 12px; border-radius:6px; border:1px solid var(--safe); background:var(--safe-soft); font-size:14px }
+.app-mine { padding:12px 14px; border-radius:8px; background:var(--safe-soft) } .app-mine b { display:block } .app-mine span { font-size:13px; color:var(--muted) }
+.app-tabs { display:flex; gap:4px; padding:4px; background:var(--surface); border:1px solid var(--line); border-radius:8px }
+.app-tabs i { flex:1; text-align:center; padding:7px; border-radius:5px; font-style:normal; font-weight:800; font-size:14px; color:var(--muted) } .app-tabs i.on { background:var(--ink); color:var(--bg) }
+.app-tally { display:grid; grid-template-columns:1fr 1fr; gap:8px }
+.app-tile { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:10px 12px }
+.app-tile b { display:block; font-family:var(--mono, ui-monospace, monospace); font-variant-numeric:tabular-nums; font-size:28px; font-weight:600; line-height:1.15 }
+.app-tile span { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700 }
+.app-progress { height:10px; border-radius:99px; background:var(--grid); overflow:hidden } .app-progress i { display:block; height:100%; width:100%; background:var(--safe); border-radius:99px; transform-origin:0 50% }
+.app-list { background:var(--surface); border:1px solid var(--line); border-radius:8px }
+.app-row { display:flex; align-items:center; gap:10px; padding:9px 12px; border-top:1px solid var(--line); font-size:15px } .app-row:first-child { border-top:0 }
+.app-av { width:30px; height:30px; border-radius:50%; background:var(--line); color:var(--muted); display:grid; place-items:center; font-weight:800; font-size:13px; flex:none }
+.app-who { flex:1; min-width:0 } .app-who b { display:block; font-weight:600 } .app-who small { color:var(--muted); font-size:12px }
+.app-pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:3px 8px; border-radius:99px; white-space:nowrap }
+.p-safe { background:var(--safe-soft); color:var(--safe) } .p-miss { background:var(--idle-soft); color:var(--idle) } .p-help { background:var(--help); color:#ffffff }
+.app-btn { border:1px solid var(--safe); color:var(--safe); border-radius:6px; padding:5px 10px; font-size:13px; font-weight:700; background:var(--surface) }
+.app-curve { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:10px }

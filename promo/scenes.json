@@ -1,0 +1,94 @@
+{
+  "v": 1,
+  "stage": "final",
+  "look": "Phone in hand: The app on a floating phone, taps landing and counters ticking up live. Show both the staff check-in and the admin view.",
+  "palettes": [
+    [
+      "#F4F6F3",
+      "#00794A",
+      "#142019",
+      "#C8102E"
+    ],
+    [
+      "#0E1726",
+      "#5AA9F0",
+      "#E8EEF5",
+      "#F2A93B"
+    ],
+    [
+      "#0E4D5C",
+      "#F5D547",
+      "#F2F7F7",
+      "#FF7A59"
+    ]
+  ],
+  "theirs": 1,
+  "width": 1920,
+  "height": 1080,
+  "fps": 60,
+  "background": "#0E4D5C",
+  "fonts": {
+    "display": {
+      "family": "Barlow Condensed",
+      "or": "inter-display",
+      "weights": [
+        600,
+        800
+      ]
+    },
+    "sans": {
+      "family": "Overpass",
+      "or": "plus-jakarta-sans",
+      "weights": [
+        400,
+        700,
+        900
+      ]
+    },
+    "mono": "dm-mono"
+  },
+  "scenes": [
+    {
+      "id": "alarm",
+      "name": "The alarm",
+      "dur": 4,
+      "desc": "The alarm sounds and one question lands: who is actually out?"
+    },
+    {
+      "id": "point",
+      "name": "Where to go",
+      "dur": 5,
+      "desc": "A staff phone floats in showing the evacuation and today's assembly point."
+    },
+    {
+      "id": "checkin",
+      "name": "Check in",
+      "dur": 6,
+      "desc": "A name is typed, the safe button is tapped, GPS confirms 32 m from the point."
+    },
+    {
+      "id": "admin",
+      "name": "The admin view",
+      "dur": 6,
+      "desc": "The admin phone counts people in live as the accountability curve climbs."
+    },
+    {
+      "id": "match",
+      "name": "Nobody missed",
+      "dur": 5,
+      "desc": "A misspelt name is matched to the staff list and the count reaches 100%."
+    },
+    {
+      "id": "debrief",
+      "name": "AI debrief",
+      "dur": 5,
+      "desc": "After the drill, one tap has AI write a short debrief of the evacuation."
+    },
+    {
+      "id": "end",
+      "name": "End card",
+      "dur": 4,
+      "desc": "Evacuation Roll Call: every person, accounted for."
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+window.CUT = kit.scenes();
