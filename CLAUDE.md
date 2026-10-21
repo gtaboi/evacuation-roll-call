@@ -39,7 +39,9 @@ Pages caches files for ~10 minutes and phones keep stale copies, so asset URLs c
 - Views are switched by `data-view="user|admin"` attributes toggled in `applyView()`. Screens (`setup` / `signin` / `app`) are switched by `showScreen()`.
 - `styles.css` ends with `[hidden] { display: none !important; }`. Display rules on `.card` and `.wrap` would otherwise override the `hidden` attribute.
 
-**`config.js`** holds the Supabase URL and the **anon** key (public by design; RLS and the functions are the security boundary), plus `options.providers` and `options.defaultRadiusM`. An empty URL or key shows the setup screen.
+**`config.js`** holds the Supabase URL and the **anon** key (public by design; RLS and the functions are the security boundary), plus `options.providers`, `options.defaultRadiusM` and the optional `options.googleMapsApiKey`. An empty URL or key shows the setup screen.
+
+**Google Maps** is used only in the admin "Assembly points" form and is loaded lazily (`loadGoogleMaps()`), only when a key is set. Place suggestions use the Places API (New) programmatic `AutocompleteSuggestion` (the legacy `Autocomplete` widget isn't available to new Google Cloud customers). The map picker keeps a fixed CSS pin over the map centre and reads `map.getCenter()`, so it needs no marker library or Map ID. Without a key, "Pick on map" opens google.com/maps in a new tab, and `parseCoords()` accepts pasted `lat, lng` text or full Maps links in the Latitude/Longitude fields.
 
 ## SQL files
 

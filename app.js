@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=5";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=6";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -740,6 +740,155 @@ function removeAdmin(email) {
   return run("remove this admin", () => q(sb.from("admins").delete().eq("email", email)));
 }
 
+// ---------- Google Maps (admin: assembly points) ----------
+
+const MAPS_KEY = options.googleMapsApiKey || "";
+let mapsPromise = null;
+
+function loadGoogleMaps() {
+  if (!MAPS_KEY) return Promise.reject(new Error("no Google Maps key"));
+  if (mapsPromise) return mapsPromise;
+  mapsPromise = new Promise((resolve, reject) => {
+    window.__rollcallMapsReady = () => resolve(window.google.maps);
+    window.gm_authFailure = () => showError("Google Maps refused the API key. Check the key allows this site's address and has Maps JavaScript API and Places API (New) enabled.");
+    const s = document.createElement("script");
+    s.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(MAPS_KEY) + "&v=weekly&loading=async&callback=__rollcallMapsReady";
+    s.async = true;
+    s.onerror = () => { mapsPromise = null; reject(new Error("Google Maps failed to load")); };
+    document.head.append(s);
+  });
+  return mapsPromise;
+}
+
+function fieldCoords(k) {
+  const lat = parseFloat($(k + "Lat").value), lng = parseFloat($(k + "Lng").value);
+  return isFinite(lat) && isFinite(lng) ? { lat, lng } : null;
+}
+
+function setFieldCoords(k, lat, lng, note) {
+  $(k + "Lat").value = lat.toFixed(6);
+  $(k + "Lng").value = lng.toFixed(6);
+  $("pointsForm").dataset.dirty = "1";
+  renderMapLink(k);
+  // After the form's own input handler, which would otherwise replace this with "Unsaved changes".
+  setTimeout(() => { $("pointsNote").textContent = note; }, 0);
+}
+
+// Accepts "1.2345, 103.8" or a Google Maps link (pin !3d…!4d…, @lat,lng, or ?q=/query=lat,lng).
+function parseCoords(text) {
+  const patterns = [/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /[?&](?:q|query|ll)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/, /@(-?\d+\.\d+),(-?\d+\.\d+)/, /^\s*\(?(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\)?\s*$/];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+      if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng };
+    }
+  }
+  return null;
+}
+
+// Place suggestions while an admin types a location name.
+let placesSession = null, suggestTimer = null;
+async function suggestPlaces(k) {
+  const input = $(k + "Name"), list = $(k + "Suggest");
+  const text = input.value.trim();
+  if (text.length < 3) { list.hidden = true; list.replaceChildren(); return; }
+  try {
+    const maps = await loadGoogleMaps();
+    const { AutocompleteSuggestion, AutocompleteSessionToken } = await maps.importLibrary("places");
+    placesSession = placesSession || new AutocompleteSessionToken();
+    const req = { input: text, sessionToken: placesSession };
+    const near = fieldCoords(k) || fieldCoords(k === "dry" ? "wet" : "dry");
+    if (near) req.locationBias = { center: near, radius: 2000 };
+    const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
+    if (input.value.trim() !== text) return; // the admin kept typing
+    const items = suggestions.filter((s) => s.placePrediction).slice(0, 5).map((s) => {
+      const li = document.createElement("li");
+      li.tabIndex = 0;
+      const span = document.createElement("span");
+      span.textContent = s.placePrediction.text.toString();
+      li.append(span);
+      const choose = (e) => { e.preventDefault(); choosePlace(k, s.placePrediction); };
+      li.addEventListener("pointerdown", choose);
+      li.addEventListener("keydown", (e) => { if (e.key === "Enter") choose(e); });
+      return li;
+    });
+    const powered = document.createElement("li");
+    powered.className = "powered";
+    powered.textContent = "Powered by Google";
+    list.replaceChildren(...items, ...(items.length ? [powered] : []));
+    list.hidden = items.length === 0;
+  } catch (e) {
+    console.error(e);
+    list.hidden = true;
+  }
+}
+
+async function choosePlace(k, prediction) {
+  $(k + "Suggest").hidden = true;
+  try {
+    const place = prediction.toPlace();
+    await place.fetchFields({ fields: ["displayName", "location"] });
+    placesSession = null;
+    $(k + "Name").value = (place.displayName || prediction.text.toString()).slice(0, 80);
+    setFieldCoords(k, place.location.lat(), place.location.lng(),
+      "Position from Google Maps. A place's pin is often the middle of the building: use “Pick on map” to move it to the exact gathering spot, then save.");
+  } catch (e) {
+    console.error(e);
+    showError("Couldn't get that place's position from Google Maps. Try again, or use “Pick on map”.");
+  }
+}
+
+// In-page map with a fixed centre pin; the admin moves the map under it.
+let picker = null, pickerKey = null;
+async function openPicker(k) {
+  const radius = Math.min(1000, Math.max(20, parseInt($(k + "Radius").value, 10) || DEFAULT_RADIUS));
+  const start = fieldCoords(k) || fieldCoords(k === "dry" ? "wet" : "dry");
+  if (!MAPS_KEY) {
+    // No key: open Google Maps itself; the admin copies the coordinates back into Latitude.
+    const url = start ? "https://www.google.com/maps/@" + start.lat + "," + start.lng + ",19z"
+      : $(k + "Name").value.trim() ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent($(k + "Name").value.trim())
+      : "https://www.google.com/maps";
+    window.open(url, "_blank", "noopener");
+    $("pointsNote").textContent = "In Google Maps, right-click (computer) or long-press (phone) the exact spot and copy the coordinates, then paste them into " + WEATHER[k] + " → Latitude.";
+    return;
+  }
+  pickerKey = k;
+  $("mapTitle").textContent = "Set the " + WEATHER[k].toLowerCase() + " assembly point";
+  $("mapDialog").showModal();
+  try {
+    const maps = await loadGoogleMaps();
+    const { Map, Circle } = await maps.importLibrary("maps");
+    if (!picker) {
+      const map = new Map($("mapCanvas"), {
+        center: { lat: 0, lng: 0 }, zoom: 2, mapTypeId: "hybrid", tilt: 0,
+        gestureHandling: "greedy", streetViewControl: false, fullscreenControl: false, clickableIcons: false,
+      });
+      const circle = new Circle({ map, center: map.getCenter(), radius, strokeColor: "#00794a", strokeWeight: 2, fillColor: "#00794a", fillOpacity: 0.15, clickable: false });
+      map.addListener("center_changed", () => {
+        const c = map.getCenter();
+        circle.setCenter(c);
+        $("mapCoords").textContent = c.lat().toFixed(6) + ", " + c.lng().toFixed(6);
+      });
+      map.addListener("click", (e) => map.panTo(e.latLng));
+      picker = { map, circle };
+    }
+    picker.circle.setRadius(radius);
+    if (start) { picker.map.setCenter(start); picker.map.setZoom(19); }
+    else {
+      try {
+        const c = await getPosition(8000);
+        picker.map.setCenter({ lat: c.latitude, lng: c.longitude });
+        picker.map.setZoom(18);
+      } catch { /* leave the world view; the admin can search by name first */ }
+    }
+  } catch (e) {
+    console.error(e);
+    $("mapDialog").close();
+    showError("Google Maps couldn't load. Check your connection and the API key, or paste coordinates into Latitude instead.");
+  }
+}
+
 // ---------- wiring ----------
 
 $("btnSafe").addEventListener("click", () => checkIn("safe"));
@@ -758,6 +907,35 @@ $("pointsForm").addEventListener("input", (e) => {
   $("pointsNote").textContent = "Unsaved changes";
   const k = e.target.id.slice(0, 3);
   if (k === "dry" || k === "wet") renderMapLink(k);
+});
+for (const k of ["dry", "wet"]) {
+  $(k + "Name").addEventListener("input", () => {
+    if (!MAPS_KEY) return;
+    clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(() => suggestPlaces(k), 300);
+  });
+  $(k + "Name").addEventListener("blur", () => setTimeout(() => { $(k + "Suggest").hidden = true; }, 150));
+  for (const f of ["Lat", "Lng"]) {
+    $(k + f).addEventListener("input", () => {
+      const v = $(k + f).value;
+      if (!/[,@!]/.test(v)) return;
+      const c = parseCoords(v);
+      if (c) setFieldCoords(k, c.lat, c.lng, "Coordinates filled in. Check on map, then save.");
+      else if (/goo\.gl|maps\.app/.test(v)) $("pointsNote").textContent = "Short share links can't be read. In Google Maps, copy the coordinates (they look like 1.2345, 103.8765) instead.";
+    });
+  }
+}
+$("pointsForm").addEventListener("click", (e) => {
+  const k = e.target.dataset && e.target.dataset.pick;
+  if (k) openPicker(k);
+});
+$("mapCancel").addEventListener("click", () => $("mapDialog").close());
+$("mapUse").addEventListener("click", () => {
+  if (picker && pickerKey) {
+    const c = picker.map.getCenter();
+    setFieldCoords(pickerKey, c.lat(), c.lng(), "Pin set on the map. Save assembly points to keep it.");
+  }
+  $("mapDialog").close();
 });
 $("pointsForm").addEventListener("click", async (e) => {
   const k = e.target.dataset && e.target.dataset.locate;

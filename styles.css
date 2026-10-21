@@ -231,3 +231,23 @@ body { margin: 0; padding-top: max(24px, env(safe-area-inset-top, 0px)); padding
 .setup ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
 [hidden] { display: none !important; }
+
+/* place suggestions and map picker */
+.suggest { margin-top: 4px; }
+.suggest li { cursor: pointer; }
+.suggest li:hover, .suggest li:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.suggest .powered { background: none; justify-content: flex-end; font-size: 0.75rem; color: var(--muted); cursor: default; }
+.suggest .powered:hover { outline: none; }
+.mapdlg {
+  width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 16px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--surface); color: var(--ink); display: none; gap: 12px;
+}
+.mapdlg[open] { display: grid; }
+.mapdlg::backdrop { background: rgb(0 0 0 / 0.55); }
+.mapbox { position: relative; height: min(60dvh, 460px); border-radius: 8px; overflow: hidden; background: var(--grid); }
+#mapCanvas { position: absolute; inset: 0; }
+.crosshair {
+  position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; transform: translate(-50%, -100%);
+  fill: var(--help); stroke: #fff; stroke-width: 1; pointer-events: none; filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.4));
+}
+.points .inline { flex-wrap: wrap; }

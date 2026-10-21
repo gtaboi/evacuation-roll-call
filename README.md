@@ -49,9 +49,22 @@ export const SUPABASE_ANON_KEY = "eyJ...";
 
 The anon key is designed to be public; the database rules decide what each person can do. Commit and push; GitHub Pages redeploys in a minute or two.
 
-### 4. First run (as admin)
+### 4. Google Maps (optional)
+Setting assembly points works in three ways:
+- **Without a key:** **Pick on map** opens Google Maps in a new tab. Right-click (computer) or long-press (phone) the exact spot, copy the coordinates, and paste them into **Latitude**; the app splits them into latitude and longitude. A full Google Maps link pasted into Latitude works too (short `maps.app.goo.gl` links don't).
+- **With a key:** typing a location name suggests places (Google Places), and **Pick on map** opens a map inside the app: move the map until the pin is on the gathering spot, with the check-in radius drawn around it.
+- **Use my location** while standing at the point, either way.
+
+To add the key:
+1. In Google Cloud console, create a project with billing on (the monthly free credit normally covers an app this size) and enable **Maps JavaScript API** and **Places API (New)**.
+2. Create an **API key**. Restrict it to **Websites** `https://hermannwwr-cmyk.github.io/*` (plus `http://localhost:*/*` for local testing), and to those two APIs.
+3. Put it in `googleMapsApiKey` in [`config.js`](config.js), bump the `?v=` numbers (see below), commit and push.
+
+The key is visible to anyone who opens the site, like every browser Maps key; the website restriction is what stops others using it.
+
+### 5. First run (as admin)
 1. Open the site, tap **Admin sign in**, and sign in.
-2. **Assembly points:** go to each point, tap **Use my location**, add a name and directions, and **Save**. Use **Check on map** to confirm the pin.
+2. **Assembly points:** for each one, search or type a name, set the exact spot (**Pick on map** or **Use my location**), add directions, and **Save**. Use **Check on map** to confirm the pin.
 3. **Expected staff:** add each person's full name, spelled the way they'll type it.
 4. **Admins:** add anyone else who should run evacuations (and create their login, step 2).
 5. Run a short drill: **Start · dry weather**, have a few people check in, **End evacuation**, then look at **Past evacuations**.

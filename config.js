@@ -9,4 +9,7 @@ export const options = {
   providers: ["email"],
   // Default check-in radius around an assembly point, in metres. Admins can change it per point.
   defaultRadiusM: 100,
+  // Optional Google Maps browser key (Maps JavaScript API + Places API (New)), restricted to this site's address.
+  // With a key, admins get place suggestions and an in-page map to set the pin. Without one, "Pick on map" opens Google Maps in a new tab.
+  googleMapsApiKey: "",
 };

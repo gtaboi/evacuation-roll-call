@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="styles.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 <div class="wrap">
@@ -150,30 +150,30 @@
 
     <!-- ADMIN VIEW -->
     <section class="section" data-view="admin" aria-labelledby="pointsHead">
-      <div class="row"><h2 id="pointsHead">Assembly points</h2><p class="hint">Stand at the point and tap “Use my location” to record it.</p></div>
+      <div class="row"><h2 id="pointsHead">Assembly points</h2><p class="hint">Search for the place, pick the exact spot on the map, or stand there and tap “Use my location”. You can also paste coordinates or a Google Maps link into Latitude.</p></div>
       <form id="pointsForm" class="section">
         <div class="points">
           <fieldset>
             <legend><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" style="fill:var(--idle)"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" style="stroke:var(--idle)" stroke-width="2" stroke-linecap="round"/></svg>Dry weather</legend>
-            <div class="field"><label for="dryName">Location</label><input id="dryName" type="text" maxlength="80" placeholder="e.g. North car park, bay A"></div>
+            <div class="field"><label for="dryName">Location</label><input id="dryName" type="text" maxlength="80" placeholder="e.g. North car park, bay A"><ul class="results suggest" id="drySuggest" hidden></ul></div>
             <div class="field"><label for="dryDir">Directions (optional)</label><input id="dryDir" type="text" maxlength="160" placeholder="e.g. Exit by the main lobby, turn left"></div>
             <div class="coords">
-              <div class="field"><label for="dryLat">Latitude</label><input id="dryLat" type="text" inputmode="decimal" class="mono"></div>
+              <div class="field"><label for="dryLat">Latitude</label><input id="dryLat" type="text" class="mono" autocomplete="off"></div>
               <div class="field"><label for="dryLng">Longitude</label><input id="dryLng" type="text" inputmode="decimal" class="mono"></div>
               <div class="field"><label for="dryRadius">Radius (m)</label><input id="dryRadius" type="number" min="20" max="1000" class="mono"></div>
             </div>
-            <div class="inline"><button class="btn small" type="button" data-locate="dry">Use my location</button><span class="hint" id="dryMap"></span></div>
+            <div class="inline"><button class="btn small" type="button" data-locate="dry">Use my location</button><button class="btn small" type="button" data-pick="dry">Pick on map</button><span class="hint" id="dryMap"></span></div>
           </fieldset>
           <fieldset>
             <legend><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15a4 4 0 0 1 .5-8 6 6 0 0 1 11.3 1.5A3.5 3.5 0 0 1 17.5 15z" style="fill:var(--muted)"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3" style="stroke:var(--focus)" stroke-width="2" stroke-linecap="round"/></svg>Wet weather</legend>
-            <div class="field"><label for="wetName">Location</label><input id="wetName" type="text" maxlength="80" placeholder="e.g. Covered loading dock, Block C"></div>
+            <div class="field"><label for="wetName">Location</label><input id="wetName" type="text" maxlength="80" placeholder="e.g. Covered loading dock, Block C"><ul class="results suggest" id="wetSuggest" hidden></ul></div>
             <div class="field"><label for="wetDir">Directions (optional)</label><input id="wetDir" type="text" maxlength="160" placeholder="e.g. Use the east stairwell, go under the canopy"></div>
             <div class="coords">
-              <div class="field"><label for="wetLat">Latitude</label><input id="wetLat" type="text" inputmode="decimal" class="mono"></div>
+              <div class="field"><label for="wetLat">Latitude</label><input id="wetLat" type="text" class="mono" autocomplete="off"></div>
               <div class="field"><label for="wetLng">Longitude</label><input id="wetLng" type="text" inputmode="decimal" class="mono"></div>
               <div class="field"><label for="wetRadius">Radius (m)</label><input id="wetRadius" type="number" min="20" max="1000" class="mono"></div>
             </div>
-            <div class="inline"><button class="btn small" type="button" data-locate="wet">Use my location</button><span class="hint" id="wetMap"></span></div>
+            <div class="inline"><button class="btn small" type="button" data-locate="wet">Use my location</button><button class="btn small" type="button" data-pick="wet">Pick on map</button><span class="hint" id="wetMap"></span></div>
           </fieldset>
         </div>
         <div class="inline"><button class="btn" type="submit">Save assembly points</button><span class="hint" id="pointsNote"></span></div>
@@ -229,9 +229,18 @@
     </section>
   </div>
 
+  <dialog id="mapDialog" class="mapdlg" aria-labelledby="mapTitle">
+    <div class="row"><h2 id="mapTitle">Set the assembly point</h2><button class="linkish" type="button" id="mapCancel">Cancel</button></div>
+    <p class="hint" style="margin:0">Move the map until the pin sits on the exact spot where people gather. The circle is the check-in radius.</p>
+    <div class="mapbox"><div id="mapCanvas"></div>
+      <svg class="crosshair" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+    </div>
+    <div class="row"><span class="mono hint" id="mapCoords"></span><button class="btn go" type="button" id="mapUse">Use this spot</button></div>
+  </dialog>
+
   <footer id="footer" hidden>Location is only read when you tap a check-in button. Only your distance from the point is stored, not where you are. This phone remembers your name so you can update your check-in.</footer>
 </div>
 <!-- Bump ?v= on each release so phones don't keep an old cached copy. -->
-<script type="module" src="app.js?v=5"></script>
+<script type="module" src="app.js?v=6"></script>
 </body>
 </html>
