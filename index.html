@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Evacuation Roll Call</title>
+<meta name="description" content="Check in at the assembly point during an evacuation.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='6' fill='%2300794a'/%3E%3Ccircle cx='15' cy='15' r='3' fill='%23fff'/%3E%3Ccircle cx='25' cy='15' r='3' fill='%23fff'/%3E%3Cpath d='M11 29v-6a4 4 0 0 1 8 0v6zM21 29v-6a4 4 0 0 1 8 0v6z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="sign" aria-hidden="true">
+      <svg viewBox="0 0 40 40" fill="none">
+        <path d="M4 4h8M4 4v8M36 4h-8M36 4v8M4 36h8M4 36v-8M36 36h-8M36 36v-8" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="15" cy="15" r="3" fill="#fff"/><circle cx="25" cy="15" r="3" fill="#fff"/>
+        <path d="M11 29v-6a4 4 0 0 1 8 0v6zM21 29v-6a4 4 0 0 1 8 0v6z" fill="#fff"/>
+      </svg>
+    </div>
+    <div class="title">
+      <h1>Evacuation Roll Call</h1>
+      <p id="tagline">Check in when you reach the assembly point.</p>
+    </div>
+  </header>
+
+  <div id="error" class="msg error" role="alert" hidden></div>
+
+  <!-- SETUP (no Supabase config yet) -->
+  <section class="card setup" id="setupScreen" hidden>
+    <h2>Setup needed</h2>
+    <p class="hint">This copy of the app isn't connected to a database yet. The site owner needs to:</p>
+    <ol>
+      <li>Create a free project at supabase.com.</li>
+      <li>Run <code>supabase/schema.sql</code> in the project's SQL Editor.</li>
+      <li>Paste the project URL and anon key into <code>config.js</code>.</li>
+    </ol>
+    <p class="hint">Full steps are in the repository's README.</p>
+  </section>
+
+  <!-- SIGN IN -->
+  <section class="card signin" id="signinScreen" hidden>
+    <h2>Sign in</h2>
+    <p class="hint" style="margin:0">Use your work email so admins can match you to the staff list.</p>
+    <form class="field" id="emailForm" style="width:100%" hidden>
+      <label for="email">Work email</label>
+      <div class="inline">
+        <input id="email" type="email" autocomplete="email" required placeholder="name@company.com">
+        <button class="btn" type="submit" id="emailBtn">Send sign-in link</button>
+      </div>
+    </form>
+    <p class="hint" id="emailSent" hidden></p>
+    <div class="inline" id="oauthButtons"></div>
+  </section>
+
+  <!-- APP -->
+  <div id="appScreen" class="wrap" style="max-width:none" hidden>
+    <div class="row">
+      <div class="who-am-i"><span id="meLabel"></span></div>
+      <button class="linkish" id="signOut">Sign out</button>
+    </div>
+
+    <nav class="tabs" id="tabs" aria-label="View" hidden>
+      <a href="#checkin" id="tabUser">Check in</a>
+      <a href="#admin" id="tabAdmin">Admin</a>
+    </nav>
+
+    <div id="status" class="status">
+      <div class="dot"></div>
+      <div class="text"><strong id="statusTitle">Loading…</strong><span id="statusSub"></span></div>
+      <div id="coordControls" hidden></div>
+    </div>
+
+    <div class="point" id="pointCard" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg>
+      <div class="text"><small id="pointLabel"></small><strong id="pointName"></strong><p id="pointDir" hidden></p><p id="pointMap" hidden></p></div>
+    </div>
+
+    <!-- USER VIEW -->
+    <section class="checkin" data-view="user" aria-labelledby="checkinHead">
+      <h2 id="checkinHead">Your check-in</h2>
+      <div id="mine" class="mine" hidden>
+        <div class="text"><strong id="mineTitle"></strong><span id="mineSub"></span></div>
+      </div>
+      <div class="gps" id="gps" hidden><div class="text" id="gpsText"></div></div>
+      <div class="field">
+        <label for="myName">Your name</label>
+        <input id="myName" type="text" maxlength="60" autocomplete="name" placeholder="As your colleagues know you">
+      </div>
+      <div class="field">
+        <label for="note">Note (optional)</label>
+        <input id="note" type="text" maxlength="80" placeholder="e.g. With visitor from reception">
+      </div>
+      <button class="big safe" id="btnSafe" disabled>
+        <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="btnSafeLabel">Check in: I'm safe</span>
+      </button>
+      <p class="hint" id="safeHint">Uses your phone's location. You must be within 100 m of the assembly point.</p>
+      <button class="big help" id="btnHelp" disabled>I need help</button>
+    </section>
+
+    <section class="section" data-view="user" aria-labelledby="userRollHead">
+      <h2 id="userRollHead">Roll call</h2>
+      <div class="tally">
+        <div class="t-help"><b id="uHelp">0</b><span>Need help</span></div>
+        <div class="t-safe"><b id="uSafe">0</b><span>Safe</span></div>
+        <div><b id="uTotal">0</b><span>Checked in</span></div>
+      </div>
+    </section>
+
+    <!-- ADMIN VIEW -->
+    <section class="section" data-view="admin" aria-labelledby="liveHead">
+      <div class="row"><h2 id="liveHead">Live performance</h2><span class="mono hint" id="liveMeta"></span></div>
+      <div class="tally four">
+        <div id="kAcc"><b id="kAccV">–</b><span>Accounted for</span><small id="kAccS"></small></div>
+        <div class="t-missing" id="kMiss"><b id="kMissV">–</b><span>Not checked in</span></div>
+        <div class="t-help" id="kHelp"><b id="kHelpV">0</b><span>Need help</span></div>
+        <div id="kTime"><b id="kTimeV">–</b><span>Time to 100%</span><small id="kTimeS"></small></div>
+      </div>
+      <div class="progress" role="progressbar" aria-label="Share of expected staff accounted for" aria-valuemin="0" aria-valuemax="100" id="prog"><div id="progBar" style="width:0"></div></div>
+      <div class="card">
+        <div class="row"><h2>Accountability curve</h2><span class="hint" id="chartSub"></span></div>
+        <div class="chart" id="chart"></div>
+        <div class="legend"><span><i></i>People accounted for</span><span><i class="exp"></i>Expected staff</span><span><i class="tgt"></i>Target time</span></div>
+      </div>
+    </section>
+
+    <section class="section" data-view="admin" id="missingBlock" hidden>
+      <div class="row"><h2>Not checked in</h2><p class="hint">Mark people safe once you've confirmed them another way.</p></div>
+      <ul class="roster missing" id="missingList"></ul>
+    </section>
+
+    <!-- BOTH VIEWS -->
+    <section class="section" aria-labelledby="listHead">
+      <div class="row"><h2 id="listHead">Checked in</h2><span class="mono hint" id="rollMeta"></span></div>
+      <ul class="roster" id="roster" hidden></ul>
+      <div class="msg info" id="emptyRoster">No one has checked in yet.</div>
+    </section>
+
+    <!-- ADMIN VIEW -->
+    <section class="section" data-view="admin" aria-labelledby="pointsHead">
+      <div class="row"><h2 id="pointsHead">Assembly points</h2><p class="hint">Stand at the point and tap “Use my location” to record it.</p></div>
+      <form id="pointsForm" class="section">
+        <div class="points">
+          <fieldset>
+            <legend><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" style="fill:var(--idle)"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" style="stroke:var(--idle)" stroke-width="2" stroke-linecap="round"/></svg>Dry weather</legend>
+            <div class="field"><label for="dryName">Location</label><input id="dryName" type="text" maxlength="80" placeholder="e.g. North car park, bay A"></div>
+            <div class="field"><label for="dryDir">Directions (optional)</label><input id="dryDir" type="text" maxlength="160" placeholder="e.g. Exit by the main lobby, turn left"></div>
+            <div class="coords">
+              <div class="field"><label for="dryLat">Latitude</label><input id="dryLat" type="text" inputmode="decimal" class="mono"></div>
+              <div class="field"><label for="dryLng">Longitude</label><input id="dryLng" type="text" inputmode="decimal" class="mono"></div>
+              <div class="field"><label for="dryRadius">Radius (m)</label><input id="dryRadius" type="number" min="20" max="1000" class="mono"></div>
+            </div>
+            <div class="inline"><button class="btn small" type="button" data-locate="dry">Use my location</button><span class="hint" id="dryMap"></span></div>
+          </fieldset>
+          <fieldset>
+            <legend><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15a4 4 0 0 1 .5-8 6 6 0 0 1 11.3 1.5A3.5 3.5 0 0 1 17.5 15z" style="fill:var(--muted)"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3" style="stroke:var(--focus)" stroke-width="2" stroke-linecap="round"/></svg>Wet weather</legend>
+            <div class="field"><label for="wetName">Location</label><input id="wetName" type="text" maxlength="80" placeholder="e.g. Covered loading dock, Block C"></div>
+            <div class="field"><label for="wetDir">Directions (optional)</label><input id="wetDir" type="text" maxlength="160" placeholder="e.g. Use the east stairwell, go under the canopy"></div>
+            <div class="coords">
+              <div class="field"><label for="wetLat">Latitude</label><input id="wetLat" type="text" inputmode="decimal" class="mono"></div>
+              <div class="field"><label for="wetLng">Longitude</label><input id="wetLng" type="text" inputmode="decimal" class="mono"></div>
+              <div class="field"><label for="wetRadius">Radius (m)</label><input id="wetRadius" type="number" min="20" max="1000" class="mono"></div>
+            </div>
+            <div class="inline"><button class="btn small" type="button" data-locate="wet">Use my location</button><span class="hint" id="wetMap"></span></div>
+          </fieldset>
+        </div>
+        <div class="inline"><button class="btn" type="submit">Save assembly points</button><span class="hint" id="pointsNote"></span></div>
+      </form>
+    </section>
+
+    <section class="section" data-view="admin" aria-labelledby="histHead">
+      <div class="row">
+        <h2 id="histHead">Past evacuations</h2>
+        <form class="inline target" id="targetForm">
+          <label for="targetMin" class="hint">Target to 100%</label>
+          <input id="targetMin" type="number" min="1" max="120" step="1" class="mono" style="font:inherit;padding:5px 8px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)">
+          <span class="hint">min</span>
+          <button class="btn small" type="submit">Save</button>
+        </form>
+      </div>
+      <p class="hint" id="histSummary"></p>
+      <div class="table-wrap" id="histWrap" hidden>
+        <table>
+          <thead><tr><th>Date</th><th>Weather</th><th class="num">Duration</th><th class="num">Accounted</th><th class="num">90% in</th><th class="num">100% in</th><th class="num">Help</th><th>Result</th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+      <div class="msg info" id="histEmpty">Finished evacuations and drills appear here, with how fast everyone was accounted for. Select one to see its curve.</div>
+    </section>
+
+    <section class="section" data-view="admin">
+      <details class="editor">
+        <summary><h2>Expected staff · <span class="mono" id="rosterCount">0</span></h2></summary>
+        <div class="body">
+          <p class="hint">Add each person's work email so their check-in is matched automatically. Leave email empty for visitors or contractors; you mark them safe yourself.</p>
+          <form class="field" id="addPersonForm">
+            <div class="coords" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto">
+              <div class="field"><label for="personName">Name</label><input id="personName" type="text" maxlength="60" required></div>
+              <div class="field"><label for="personEmail">Email (optional)</label><input id="personEmail" type="email" list="knownEmails"></div>
+              <div class="field"><label>&nbsp;</label><button class="btn" type="submit">Add</button></div>
+            </div>
+            <datalist id="knownEmails"></datalist>
+          </form>
+          <ul class="roster" id="rosterList" hidden></ul>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" data-view="admin">
+      <details class="editor">
+        <summary><h2>Admins · <span class="mono" id="adminCount">0</span></h2></summary>
+        <div class="body">
+          <p class="hint">Admins start and end evacuations, see performance and manage these lists. Everyone else who signs in gets the check-in view.</p>
+          <form class="inline" id="addAdminForm">
+            <input id="adminEmail" type="email" placeholder="name@company.com" required style="font:inherit;padding:10px 12px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);flex:1;min-width:0">
+            <button class="btn" type="submit">Add admin</button>
+          </form>
+          <ul class="roster" id="adminList"></ul>
+        </div>
+      </details>
+    </section>
+  </div>
+
+  <footer id="footer">Location is only read when you tap a check-in button and is not stored, only your distance from the point.</footer>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
