@@ -11,5 +11,5 @@ export const options = {
   defaultRadiusM: 100,
   // Optional Google Maps browser key (Maps JavaScript API + Places API (New)), restricted to this site's address.
   // With a key, admins get place suggestions and an in-page map to set the pin. Without one, "Pick on map" opens Google Maps in a new tab.
-  googleMapsApiKey: "",
+  googleMapsApiKey: "AIzaSyBbdEAd8qmzuis_loXBqdLaXxxwiMUsCso",
 };
