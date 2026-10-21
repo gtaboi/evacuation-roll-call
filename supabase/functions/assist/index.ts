@@ -19,21 +19,32 @@ const KEY = Deno.env.get("LLM_API_KEY") ?? "";
 
 const normName = (n: string) => (n ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 
+// Retry pauses (ms) for 429 and 5xx answers: the provider's upstream is intermittently "unavailable".
+const RETRY_DELAYS = [1000, 2500, 5000];
+
 async function llm(messages: { role: string; content: string }[], session: string, maxTokens: number) {
-  const res = await fetch(BASE + "/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + KEY,
-      "Content-Type": "application/json",
-      "User-Agent": "evacuation-roll-call/1.0",
-      // OpenCode Go routes and caches by a stable per-conversation session id.
-      "x-opencode-session": session,
-    },
-    body: JSON.stringify({ model: MODEL, messages, temperature: 0.2, max_tokens: maxTokens }),
-  });
-  if (!res.ok) throw new Error("The AI service answered " + res.status + ": " + (await res.text()).slice(0, 200));
-  const body = await res.json();
-  return String(body?.choices?.[0]?.message?.content ?? "").trim();
+  let lastError = "";
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt - 1]));
+    const res = await fetch(BASE + "/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + KEY,
+        "Content-Type": "application/json",
+        "User-Agent": "evacuation-roll-call/1.0",
+        // OpenCode Go routes and caches by a stable per-conversation session id.
+        "x-opencode-session": session,
+      },
+      body: JSON.stringify({ model: MODEL, messages, temperature: 0.2, max_tokens: maxTokens }),
+    });
+    if (res.ok) {
+      const body = await res.json();
+      return String(body?.choices?.[0]?.message?.content ?? "").trim();
+    }
+    lastError = res.status + ": " + (await res.text()).slice(0, 200);
+    if (res.status !== 429 && res.status < 500) break; // a real error (bad key, bad request): don't retry
+  }
+  throw new Error("The AI service is busy or unavailable right now (" + lastError + "). Try again in a minute.");
 }
 
 function parseJson(text: string) {
