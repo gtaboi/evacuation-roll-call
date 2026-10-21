@@ -14,7 +14,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const BASE = (Deno.env.get("LLM_BASE_URL") ?? "https://opencode.ai/zen/go/v1").replace(/\/+$/, "");
-const MODEL = Deno.env.get("LLM_MODEL") ?? "deepseek-v4.1-flash";
+const MODEL = Deno.env.get("LLM_MODEL") ?? "glm-5.3-flash";
 const KEY = Deno.env.get("LLM_API_KEY") ?? "";
 
 const normName = (n: string) => (n ?? "").trim().replace(/\s+/g, " ").toLowerCase();

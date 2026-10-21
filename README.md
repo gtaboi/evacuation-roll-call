@@ -65,7 +65,7 @@ To add the key:
 The key is visible to anyone who opens the site, like every browser Maps key; the website restriction is what stops others using it.
 
 ### 5. AI helper (optional)
-Admins get two AI features, powered by an OpenAI-compatible LLM (set up for **OpenCode Go** with **DeepSeek V4.1 Flash**):
+Admins get two AI features, powered by an OpenAI-compatible LLM (set up for **OpenCode Go** with **GLM 5.3 Flash**):
 - **Suggest matches:** when a check-in's typed name isn't on the staff list (typos, nicknames, initials), it suggests the likely person. **Link** counts that check-in for them.
 - **Debrief:** select a past evacuation and tap **Write debrief** for a short summary: result against the target, who needed help, was late or never accounted for, and what to improve.
 
@@ -77,7 +77,7 @@ To switch it on:
 3. Supabase → **Edge Functions → Secrets**, add:
    - `LLM_API_KEY`: your OpenCode Go key
    - `LLM_BASE_URL`: `https://opencode.ai/zen/go/v1`
-   - `LLM_MODEL`: `deepseek-v4.1-flash`
+   - `LLM_MODEL`: `glm-5.3-flash`
 
 Any OpenAI-compatible provider works by changing those three secrets. The function sends OpenCode Go's `x-opencode-session` header, which other providers ignore.
 
