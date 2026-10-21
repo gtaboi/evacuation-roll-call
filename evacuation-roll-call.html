@@ -1,0 +1,985 @@
+<title>Evacuation Roll Call</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow column like a muster card. Staff see check-in + roll call; admins get a second view with controls and performance. */
+:root {
+  --bg: #f4f6f3;
+  --surface: #ffffff;
+  --ink: #142019;
+  --muted: #5b6a61;
+  --line: #d6ddd7;
+  --grid: #e6ebe7;
+  --safe: #00794a;          /* ISO 7010 safe-condition green */
+  --safe-ink: #ffffff;
+  --safe-soft: #e1f2e9;
+  --help: #c8102e;          /* signal red */
+  --help-ink: #ffffff;
+  --help-soft: #fbe4e7;
+  --idle: #8a6d00;
+  --idle-soft: #fbf2d0;
+  --focus: #1d5fd1;
+  --font-display: "Overpass", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-body: "Overpass", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-data: "Overpass Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1612; --surface: #17211b; --ink: #e8efe9; --muted: #9aaba0; --line: #2b3a31; --grid: #223029;
+    --safe: #1fae71; --safe-ink: #04130b; --safe-soft: #12301f;
+    --help: #ff5a6e; --help-ink: #1a0307; --help-soft: #3a1419; --idle: #e3bd3c; --idle-soft: #332a0c; --focus: #7aa7ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1612; --surface: #17211b; --ink: #e8efe9; --muted: #9aaba0; --line: #2b3a31; --grid: #223029;
+  --safe: #1fae71; --safe-ink: #04130b; --safe-soft: #12301f;
+  --help: #ff5a6e; --help-ink: #1a0307; --help-soft: #3a1419; --idle: #e3bd3c; --idle-soft: #332a0c; --focus: #7aa7ff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+.wrap { max-width: 680px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: 1.75rem; font-weight: 900; letter-spacing: -0.01em; line-height: 1.1; }
+h2 { font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible, tr:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+header { display: flex; align-items: center; gap: 14px; }
+.sign {
+  flex: none; width: 52px; height: 52px; border-radius: 6px; background: var(--safe);
+  display: grid; place-items: center;
+}
+.sign svg { width: 40px; height: 40px; }
+header .title { flex: 1; min-width: 0; }
+header p { margin: 2px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+.tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.tabs a {
+  flex: 1; text-align: center; padding: 8px 12px; border-radius: 5px; text-decoration: none;
+  color: var(--muted); font-weight: 800; font-size: 0.9rem;
+}
+.tabs a[aria-current="page"] { background: var(--ink); color: var(--bg); }
+
+.status {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 14px 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
+}
+.status .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+.status.active { background: var(--help-soft); border-color: var(--help); }
+.status.active .dot { background: var(--help); animation: pulse 1.4s ease-in-out infinite; }
+.status.ended { background: var(--idle-soft); border-color: var(--idle); }
+.status.ended .dot { background: var(--idle); }
+.status .text { flex: 1; min-width: 0; }
+.status strong { display: block; font-weight: 800; }
+.status span { color: var(--muted); font-size: 0.9rem; }
+@keyframes pulse { 50% { transform: scale(1.5); opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .status.active .dot { animation: none; } }
+
+.btn {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  padding: 10px 16px; border-radius: 6px; font-weight: 700;
+}
+.btn.danger { border-color: var(--help); background: var(--help); color: var(--help-ink); }
+.btn.small { padding: 5px 10px; font-size: 0.85rem; white-space: nowrap; }
+.btn.go { border-color: var(--safe); color: var(--safe); }
+
+.checkin { display: grid; gap: 12px; }
+.big {
+  width: 100%; border: 0; border-radius: 10px; padding: 22px 20px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  font-family: var(--font-display); font-weight: 900; font-size: 1.5rem; letter-spacing: 0.01em;
+}
+.big.safe { background: var(--safe); color: var(--safe-ink); }
+.big.help { background: transparent; color: var(--help); border: 2px solid var(--help); font-size: 1.1rem; padding: 14px 20px; }
+.field { display: grid; gap: 6px; }
+.field label { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.field input {
+  font: inherit; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); width: 100%; min-width: 0;
+}
+.inline { display: flex; gap: 8px; align-items: center; }
+.mine {
+  padding: 14px 16px; border-radius: 8px; display: flex; gap: 12px; align-items: center;
+}
+.mine.safe { background: var(--safe-soft); }
+.mine.help { background: var(--help-soft); }
+.mine .text { flex: 1; min-width: 0; }
+.mine strong { display: block; }
+.mine span { color: var(--muted); font-size: 0.9rem; }
+
+.msg { padding: 12px 14px; border-radius: 6px; font-size: 0.95rem; }
+.msg.error { background: var(--help-soft); color: var(--ink); border-left: 4px solid var(--help); }
+.msg.info { background: var(--surface); border: 1px dashed var(--line); color: var(--muted); }
+
+.tally { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tally.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 520px) { .tally.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tally > div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+.tally b { display: block; font-family: var(--font-data); font-size: 1.6rem; font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tally span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+.tally small { display: block; color: var(--muted); font-size: 0.8rem; }
+.tally .t-help b { color: var(--help); }
+.tally .t-safe b { color: var(--safe); }
+.tally .t-missing b { color: var(--idle); }
+.tally .hot { border-color: var(--idle); background: var(--idle-soft); }
+.tally .bad { border-color: var(--help); }
+
+.progress { height: 10px; border-radius: 99px; background: var(--grid); overflow: hidden; }
+.progress div { height: 100%; background: var(--safe); border-radius: 99px; transition: width .4s; }
+@media (prefers-reduced-motion: reduce) { .progress div { transition: none; } }
+
+.roster { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.roster li { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.roster li:first-child { border-top: 0; }
+.roster img { width: 32px; height: 32px; border-radius: 50%; flex: none; }
+.roster .initial {
+  width: 32px; height: 32px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: var(--line); color: var(--muted); font-weight: 800; font-size: 0.9rem;
+}
+.roster .who { flex: 1; min-width: 0; }
+.roster .who b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.roster .who small { color: var(--muted); overflow-wrap: anywhere; }
+.roster.missing { border-color: var(--idle); }
+.pill { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 99px; white-space: nowrap; }
+.pill.safe { background: var(--safe-soft); color: var(--safe); }
+.pill.help { background: var(--help); color: var(--help-ink); }
+.pill.missing { background: var(--idle-soft); color: var(--idle); }
+.roster time { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.section { display: grid; gap: 10px; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.hint { color: var(--muted); font-size: 0.85rem; margin: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 12px; }
+
+/* accountability curve */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart text { font-family: var(--font-data); font-size: 11px; fill: var(--muted); }
+.chart .tip {
+  position: absolute; pointer-events: none; background: var(--ink); color: var(--bg);
+  padding: 6px 9px; border-radius: 5px; font-size: 0.8rem; white-space: nowrap; transform: translate(-50%, -110%);
+}
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 0; vertical-align: middle; margin-right: 6px; border-top: 2px solid var(--safe); }
+.legend i.exp { border-top: 2px dashed var(--muted); }
+.legend i.tgt { border-top: 2px dashed var(--idle); }
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { padding: 9px 12px; text-align: left; white-space: nowrap; border-top: 1px solid var(--line); }
+th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-top: 0; }
+td.num, th.num { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+tbody tr { cursor: pointer; }
+tbody tr:hover, tbody tr[aria-selected="true"] { background: var(--bg); }
+tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--ink); }
+
+details.editor { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+details.editor summary {
+  cursor: pointer; padding: 14px 16px; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+details.editor summary::-webkit-details-marker { display: none; }
+details.editor summary::after { content: "+"; font-weight: 800; color: var(--muted); font-size: 1.2rem; }
+details.editor[open] summary::after { content: "–"; }
+details.editor .body { display: grid; gap: 14px; padding: 0 16px 16px; }
+details.editor .roster { border-radius: 6px; }
+.results { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.results li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; background: var(--bg); }
+.results img { width: 26px; height: 26px; border-radius: 50%; flex: none; }
+.results span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.target input { width: 6em; }
+
+/* assembly point */
+.point {
+  display: flex; gap: 14px; align-items: flex-start; padding: 16px; border-radius: 8px;
+  background: var(--safe); color: var(--safe-ink);
+}
+.point svg { flex: none; width: 34px; height: 34px; }
+.point .text { flex: 1; min-width: 0; }
+.point small { display: block; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.85; }
+.point strong { display: block; font-family: var(--font-display); font-size: 1.35rem; font-weight: 900; line-height: 1.2; overflow-wrap: anywhere; }
+.point p { margin: 4px 0 0; overflow-wrap: anywhere; }
+.points { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 560px) { .points { grid-template-columns: 1fr; } }
+.points fieldset { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px 14px; display: grid; gap: 10px; min-width: 0; background: var(--surface); }
+.points legend { padding: 0 6px; font-weight: 800; display: flex; gap: 6px; align-items: center; }
+.points legend svg { width: 18px; height: 18px; }
+.startset { display: flex; gap: 8px; flex-wrap: wrap; }
+footer { color: var(--muted); font-size: 0.8rem; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="sign" aria-hidden="true">
+      <!-- assembly-point pictogram: four people inside arrows -->
+      <svg viewBox="0 0 40 40" fill="none">
+        <path d="M4 4h8M4 4v8M36 4h-8M36 4v8M4 36h8M4 36v-8M36 36h-8M36 36v-8" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="15" cy="15" r="3" fill="#fff"/><circle cx="25" cy="15" r="3" fill="#fff"/>
+        <path d="M11 29v-6a4 4 0 0 1 8 0v6zM21 29v-6a4 4 0 0 1 8 0v6z" fill="#fff"/>
+      </svg>
+    </div>
+    <div class="title">
+      <h1>Evacuation Roll Call</h1>
+      <p id="tagline">Check in when you reach the assembly point.</p>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="View" hidden>
+    <a href="#checkin" id="tabUser">Check in</a>
+    <a href="#admin" id="tabAdmin">Admin</a>
+  </nav>
+
+  <div id="status" class="status">
+    <div class="dot"></div>
+    <div class="text"><strong id="statusTitle">Connecting…</strong><span id="statusSub">Loading the current evacuation status.</span></div>
+    <div id="coordControls" hidden></div>
+  </div>
+
+  <div id="error" class="msg error" role="alert" hidden></div>
+
+  <div class="point" id="pointCard" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg>
+    <div class="text"><small id="pointLabel">Go to the assembly point</small><strong id="pointName"></strong><p id="pointDir" hidden></p></div>
+  </div>
+
+  <!-- USER VIEW -->
+  <section class="checkin" data-view="user" aria-labelledby="checkinHead">
+    <h2 id="checkinHead">Your check-in</h2>
+    <div id="mine" class="mine" hidden>
+      <div class="text"><strong id="mineTitle"></strong><span id="mineSub"></span></div>
+    </div>
+    <div class="field">
+      <label for="location">Where are you? (optional)</label>
+      <input id="location" type="text" maxlength="80" placeholder="e.g. Assembly point B, car park">
+    </div>
+    <button class="big safe" id="btnSafe" disabled>
+      <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="btnSafeLabel">Check in: I'm safe</span>
+    </button>
+    <button class="big help" id="btnHelp" disabled>I need help</button>
+  </section>
+
+  <section class="section" data-view="user" aria-labelledby="userRollHead">
+    <h2 id="userRollHead">Roll call</h2>
+    <div class="tally">
+      <div class="t-help"><b id="uHelp">0</b><span>Need help</span></div>
+      <div class="t-safe"><b id="uSafe">0</b><span>Safe</span></div>
+      <div><b id="uTotal">0</b><span>Checked in</span></div>
+    </div>
+  </section>
+
+  <!-- ADMIN VIEW -->
+  <section class="section" data-view="admin" aria-labelledby="liveHead">
+    <div class="row"><h2 id="liveHead">Live performance</h2><span class="mono hint" id="liveMeta"></span></div>
+    <div class="tally four">
+      <div id="kAcc"><b id="kAccV">–</b><span>Accounted for</span><small id="kAccS"></small></div>
+      <div class="t-missing" id="kMiss"><b id="kMissV">–</b><span>Not checked in</span></div>
+      <div class="t-help" id="kHelp"><b id="kHelpV">0</b><span>Need help</span></div>
+      <div id="kTime"><b id="kTimeV">–</b><span id="kTimeL">Time to 100%</span><small id="kTimeS"></small></div>
+    </div>
+    <div class="progress" role="progressbar" aria-label="Share of expected staff accounted for" aria-valuemin="0" aria-valuemax="100" id="prog"><div id="progBar" style="width:0"></div></div>
+    <div class="card">
+      <div class="row"><h2 id="chartHead">Accountability curve</h2><span class="hint" id="chartSub"></span></div>
+      <div class="chart" id="chart"></div>
+      <div class="legend"><span><i></i>People accounted for</span><span><i class="exp"></i>Expected staff</span><span><i class="tgt"></i>Target time</span></div>
+    </div>
+  </section>
+
+  <section class="section" data-view="admin" id="missingBlock" hidden>
+    <div class="row"><h2>Not checked in</h2><p class="hint">Mark people safe once you've confirmed them another way.</p></div>
+    <ul class="roster missing" id="missingList"></ul>
+  </section>
+
+  <!-- BOTH VIEWS -->
+  <section class="section" aria-labelledby="listHead">
+    <div class="row"><h2 id="listHead">Checked in</h2><span class="mono hint" id="rollMeta"></span></div>
+    <ul class="roster" id="roster" hidden></ul>
+    <div class="msg info" id="emptyRoster">No one has checked in yet. Names appear here as people tap “Check in”.</div>
+  </section>
+
+  <!-- ADMIN VIEW -->
+  <section class="section" data-view="admin" aria-labelledby="pointsHead">
+    <div class="row"><h2 id="pointsHead">Assembly points</h2><p class="hint">Staff see the point for the weather you pick when you start.</p></div>
+    <form id="pointsForm" class="section">
+      <div class="points">
+        <fieldset>
+          <legend><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" style="fill:var(--idle)"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" style="stroke:var(--idle)" stroke-width="2" stroke-linecap="round"/></svg>Dry weather</legend>
+          <div class="field"><label for="dryName">Location</label><input id="dryName" type="text" maxlength="80" placeholder="e.g. North car park, bay A"></div>
+          <div class="field"><label for="dryDir">Directions (optional)</label><input id="dryDir" type="text" maxlength="160" placeholder="e.g. Exit by the main lobby, turn left"></div>
+        </fieldset>
+        <fieldset>
+          <legend><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15a4 4 0 0 1 .5-8 6 6 0 0 1 11.3 1.5A3.5 3.5 0 0 1 17.5 15z" style="fill:var(--muted)"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3" style="stroke:var(--focus)" stroke-width="2" stroke-linecap="round"/></svg>Wet weather</legend>
+          <div class="field"><label for="wetName">Location</label><input id="wetName" type="text" maxlength="80" placeholder="e.g. Covered loading dock, Block C"></div>
+          <div class="field"><label for="wetDir">Directions (optional)</label><input id="wetDir" type="text" maxlength="160" placeholder="e.g. Use the east stairwell, go under the canopy"></div>
+        </fieldset>
+      </div>
+      <div class="inline"><button class="btn" type="submit" id="pointsSave">Save assembly points</button><span class="hint" id="pointsNote"></span></div>
+    </form>
+  </section>
+
+  <section class="section" data-view="admin" aria-labelledby="histHead">
+    <div class="row">
+      <h2 id="histHead">Past evacuations</h2>
+      <form class="inline target" id="targetForm">
+        <label for="targetMin" class="hint">Target to 100%</label>
+        <input id="targetMin" type="number" min="1" max="120" step="1" class="mono" style="font:inherit;padding:5px 8px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)">
+        <span class="hint">min</span>
+        <button class="btn small" type="submit">Save</button>
+      </form>
+    </div>
+    <p class="hint" id="histSummary"></p>
+    <div class="table-wrap" id="histWrap" hidden>
+      <table>
+        <thead><tr><th>Date</th><th>Weather</th><th class="num">Duration</th><th class="num">Accounted</th><th class="num">90% in</th><th class="num">100% in</th><th class="num">Help</th><th>Result</th></tr></thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+    <div class="msg info" id="histEmpty">Finished evacuations and drills appear here, with how fast everyone was accounted for. Select one to see its curve.</div>
+  </section>
+
+  <section class="section" data-view="admin">
+    <details class="editor" id="rosterDetails">
+      <summary><h2>Expected staff · <span class="mono" id="rosterCount">0</span></h2></summary>
+      <div class="body">
+        <p class="hint">Everyone on this list shows as “Not checked in” until they check in or you mark them safe.</p>
+        <div class="field">
+          <label for="peopleSearch">Add a colleague by name or email</label>
+          <input id="peopleSearch" type="search" autocomplete="off" placeholder="Start typing a name">
+          <ul class="results" id="searchResults"></ul>
+        </div>
+        <form class="field" id="addNameForm">
+          <label for="plainName">Add someone without a Claude account (you mark them safe yourself)</label>
+          <div class="inline">
+            <input id="plainName" type="text" maxlength="60" placeholder="e.g. Site visitor, contractor">
+            <button class="btn" type="submit">Add</button>
+          </div>
+        </form>
+        <ul class="roster" id="rosterList" hidden></ul>
+      </div>
+    </details>
+  </section>
+
+  <footer id="footer">Sign-in is handled by your Claude account.</footer>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  let db = null, user = null, uid = null, isAdmin = false;
+  let view = "user";
+  let drill = null;           // {id, active, startedAt, endedAt}
+  let checkins = [];          // [{id, status, location, at, firstAt, drillId}]
+  let people = [];            // expected staff: [{key, id} | {key, name}]
+  let marks = {};             // this event's admin marks: {key: {status, at}}
+  let history = [];           // finished events, newest first
+  let targetMin = 10;
+  let points = { dry: null, wet: null }; // assembly points: {name, directions}
+  const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
+  let selected = null;        // history id shown in the chart; null = current event
+  let marksUnsub = null, marksFor = null;
+  let busy = false;
+
+  function showError(text) {
+    const el = $("error");
+    el.textContent = text || "";
+    el.hidden = !text;
+  }
+
+  const fmtClock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const fmtDate = (ms) => new Date(ms).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+  function fmtAgo(ms) {
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 60) return "just now";
+    const m = Math.round(s / 60);
+    if (m < 60) return m + " min ago";
+    return Math.floor(m / 60) + " h " + (m % 60) + " min ago";
+  }
+  function fmtDur(sec) {
+    if (sec == null) return "–";
+    sec = Math.max(0, Math.round(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    if (h) return h + "h " + String(m).padStart(2, "0") + "m";
+    return m + "m " + String(s).padStart(2, "0") + "s";
+  }
+
+  // Seconds after the alarm by which the given share of expected staff was accounted for.
+  function timeTo(times, expected, share) {
+    if (!expected) return null;
+    const need = Math.ceil(share * expected);
+    return times.length >= need ? times[need - 1] : null;
+  }
+
+  function current() {
+    if (!drill) return [];
+    return checkins.filter((c) => c.drillId === drill.id);
+  }
+
+  // Everyone accounted for in the current event, plus who is still missing.
+  function rollState() {
+    const cur = current();
+    const byId = new Map(cur.map((c) => [c.id, c]));
+    const rows = cur.map((c) => ({ key: c.id, id: c.id, status: c.status, location: c.location, at: c.at, firstAt: c.firstAt || c.at, marked: false }));
+    for (const p of people) {
+      if (p.id && byId.has(p.id)) continue;
+      const m = drill && marks[p.key];
+      if (m) rows.push({ key: p.key, id: p.id || null, name: p.name, status: m.status, at: m.at, firstAt: m.at, marked: true });
+    }
+    rows.sort((a, b) => (a.status === "help" ? 0 : 1) - (b.status === "help" ? 0 : 1) || b.at - a.at);
+    const accounted = new Set(rows.map((r) => r.key));
+    const missing = drill ? people.filter((p) => !accounted.has(p.key)) : [];
+    const times = drill ? rows.map((r) => Math.max(0, (r.firstAt - drill.startedAt) / 1000)).sort((a, b) => a - b) : [];
+    return { rows, missing, times };
+  }
+
+  function avatar(p, fallbackName) {
+    if (p && p.avatarUrl) {
+      const img = document.createElement("img");
+      img.alt = "";
+      img.src = p.avatarUrl;
+      return img;
+    }
+    const d = document.createElement("div");
+    d.className = "initial";
+    d.textContent = (fallbackName || "?").trim().charAt(0).toUpperCase() || "?";
+    return d;
+  }
+
+  function personRow(p, name, detail, extras) {
+    const li = document.createElement("li");
+    const who = document.createElement("div");
+    who.className = "who";
+    const b = document.createElement("b");
+    b.textContent = name;
+    who.append(b);
+    if (detail) {
+      const sm = document.createElement("small");
+      sm.textContent = detail;
+      who.append(sm);
+    }
+    li.append(avatar(p, name), who, ...extras);
+    return li;
+  }
+
+  function pill(kind, text) {
+    const s = document.createElement("span");
+    s.className = "pill " + kind;
+    s.textContent = text;
+    return s;
+  }
+
+  function smallBtn(text, cls, onClick) {
+    const b = document.createElement("button");
+    b.className = "btn small " + (cls || "");
+    b.textContent = text;
+    b.disabled = busy;
+    b.onclick = onClick;
+    return b;
+  }
+
+  function applyView() {
+    const admin = isAdmin && view === "admin";
+    document.querySelectorAll("[data-view]").forEach((el) => {
+      if (el.id === "missingBlock") return; // shown by renderRoll
+      el.hidden = el.dataset.view !== (admin ? "admin" : "user");
+    });
+    $("tabs").hidden = !isAdmin;
+    $("tabUser").setAttribute("aria-current", admin ? "false" : "page");
+    $("tabAdmin").setAttribute("aria-current", admin ? "page" : "false");
+    $("tagline").textContent = admin
+      ? "Admin: run the roll call and track how fast everyone is accounted for."
+      : "Check in when you reach the assembly point.";
+    $("footer").textContent = isAdmin
+      ? "Admins are people with Editor access to this page (set in the Share menu). Everyone else sees the check-in view only."
+      : "Sign-in is handled by your Claude account. An admin starts the roll call when the alarm sounds.";
+  }
+
+  function renderStatus() {
+    const box = $("status");
+    box.classList.remove("active", "ended");
+    if (!db) return;
+    const admin = isAdmin && view === "admin";
+    if (drill && drill.active) {
+      box.classList.add("active");
+      $("statusTitle").textContent = "Evacuation in progress";
+      $("statusSub").textContent = "Started " + fmtClock(drill.startedAt) + " (" + fmtAgo(drill.startedAt) + ")." + (admin ? "" : " Check in now.");
+    } else if (drill) {
+      box.classList.add("ended");
+      $("statusTitle").textContent = "Evacuation ended";
+      $("statusSub").textContent = "Ran " + fmtClock(drill.startedAt) + "–" + fmtClock(drill.endedAt || drill.startedAt) + " on " + fmtDate(drill.startedAt) + ".";
+    } else {
+      $("statusTitle").textContent = "No evacuation in progress";
+      $("statusSub").textContent = admin
+        ? "Start one when the alarm sounds. Everyone with this link can then check in."
+        : "An admin starts the roll call when the alarm sounds.";
+    }
+    const cc = $("coordControls");
+    cc.hidden = !admin;
+    cc.replaceChildren();
+    if (admin) {
+      const live = drill && drill.active;
+      const set = document.createElement("div");
+      set.className = "startset";
+      const mk = (text, cls, fn) => {
+        const b = document.createElement("button");
+        b.className = "btn" + (cls ? " " + cls : "");
+        b.textContent = text;
+        b.disabled = busy;
+        b.onclick = fn;
+        set.append(b);
+      };
+      if (live) {
+        const other = drill.weather === "wet" ? "dry" : "wet";
+        const saved = drill.weather && points[drill.weather];
+        if (saved && saved.name && JSON.stringify(saved) !== JSON.stringify(drill.point || null)) {
+          mk("Send point to staff", "go", () => switchWeather(drill.weather));
+        }
+        mk("Switch to " + WEATHER[other].toLowerCase() + " point", "", () => switchWeather(other));
+        mk("End evacuation", "", endDrill);
+      } else {
+        mk("Start · dry weather", "danger", () => startDrill("dry"));
+        mk("Start · wet weather", "danger", () => startDrill("wet"));
+      }
+      cc.append(set);
+    }
+    renderPoint();
+  }
+
+  function renderPoint() {
+    const p = drill && drill.active && drill.point;
+    $("pointCard").hidden = !(p && p.name);
+    if (!p || !p.name) return;
+    $("pointLabel").textContent = (WEATHER[drill.weather] || "Assembly") + " · go to this assembly point";
+    $("pointName").textContent = p.name;
+    $("pointDir").textContent = p.directions || "";
+    $("pointDir").hidden = !p.directions;
+  }
+
+  function renderMine() {
+    const active = !!(drill && drill.active);
+    const me = uid && current().find((c) => c.id === uid);
+    $("btnSafe").disabled = !active || busy || !uid;
+    $("btnHelp").disabled = !active || busy || !uid;
+    $("btnSafeLabel").textContent = me ? "Update: I'm safe" : "Check in: I'm safe";
+    const box = $("mine");
+    box.hidden = !me;
+    if (me) {
+      box.className = "mine " + me.status;
+      $("mineTitle").textContent = me.status === "help" ? "You asked for help" : "You're checked in as safe";
+      $("mineSub").textContent = fmtClock(me.at) + (me.location ? " · " + me.location : "");
+    }
+  }
+
+  function renderPerformance(st) {
+    const expected = people.length;
+    const acc = st.rows.length;
+    const help = st.rows.filter((r) => r.status === "help").length;
+    const live = !!(drill && drill.active);
+    const span = drill ? ((live ? Date.now() : drill.endedAt || Date.now()) - drill.startedAt) / 1000 : 0;
+    const pct = expected ? Math.min(100, Math.round((acc / expected) * 100)) : null;
+    const t100 = timeTo(st.times, expected, 1);
+    const target = targetMin * 60;
+
+    $("liveMeta").textContent = drill ? (live ? "Elapsed " : "Lasted ") + fmtDur(span) : "";
+    $("kAccV").textContent = !drill ? "–" : expected ? pct + "%" : String(acc);
+    $("kAccS").textContent = !drill ? "No event yet" : expected ? acc + " of " + expected + " expected" : "Add expected staff for a %";
+    $("kMissV").textContent = drill && expected ? st.missing.length : "–";
+    $("kMiss").classList.toggle("hot", !!(live && st.missing.length));
+    $("kHelpV").textContent = drill ? help : "–";
+    $("kHelp").classList.toggle("bad", help > 0);
+    if (t100 != null) {
+      $("kTimeV").textContent = fmtDur(t100);
+      $("kTimeS").textContent = t100 <= target ? "Within " + targetMin + " min target" : "Over " + targetMin + " min target";
+    } else {
+      $("kTimeV").textContent = drill ? fmtDur(span) : "–";
+      $("kTimeS").textContent = !drill ? "Target " + targetMin + " min" : live ? "Still running · target " + targetMin + " min" : "Not everyone accounted for";
+    }
+    $("kTime").classList.toggle("bad", drill != null && (t100 != null ? t100 > target : span > target));
+    $("progBar").style.width = (pct || 0) + "%";
+    $("prog").setAttribute("aria-valuenow", pct || 0);
+
+    // Chart: the current event, or a past one picked in the table.
+    const h = selected && history.find((x) => x.id === selected);
+    if (h) {
+      $("chartSub").textContent = "Showing " + fmtDate(h.startedAt) + " " + fmtClock(h.startedAt);
+      drawChart(h.times || [], h.expected, (h.endedAt - h.startedAt) / 1000, false);
+    } else {
+      $("chartSub").textContent = drill ? (live ? "Live · updates as people check in" : "Latest event") : "";
+      drawChart(st.times, expected, span, live);
+    }
+  }
+
+  function niceStep(maxMin) {
+    for (const s of [1, 2, 5, 10, 15, 30, 60]) if (maxMin / s <= 6) return s;
+    return 120;
+  }
+
+  function drawChart(times, expected, spanSec, live) {
+    const el = $("chart");
+    if (!drill && !selected) {
+      el.innerHTML = '<div class="msg info">The curve appears once an evacuation starts: how many people were accounted for, minute by minute.</div>';
+      return;
+    }
+    const W = 640, H = 230, L = 40, R = 16, T = 14, B = 30;
+    const target = targetMin * 60;
+    const last = times.length ? times[times.length - 1] : 0;
+    const maxMin = Math.max(1, Math.ceil(Math.max(spanSec, last, target * 1.05) / 60));
+    const step = niceStep(maxMin);
+    const xMaxMin = Math.ceil(maxMin / step) * step;
+    const yMax = Math.max(1, expected || 0, times.length);
+    const x = (sec) => L + (sec / 60 / xMaxMin) * (W - L - R);
+    const y = (n) => T + (1 - n / yMax) * (H - T - B);
+    const endSec = Math.max(spanSec, last);
+
+    let grid = "", labels = "";
+    for (let m = 0; m <= xMaxMin; m += step) {
+      grid += `<line x1="${x(m * 60)}" x2="${x(m * 60)}" y1="${T}" y2="${H - B}" style="stroke:var(--grid)"/>`;
+      labels += `<text x="${x(m * 60)}" y="${H - B + 18}" text-anchor="middle">${m}m</text>`;
+    }
+    const yTicks = [0, Math.round(yMax / 2), yMax].filter((v, i, a) => a.indexOf(v) === i);
+    for (const v of yTicks) {
+      grid += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--grid)"/>`;
+      labels += `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+    }
+    let d = `M${x(0)},${y(0)}`;
+    times.forEach((t, i) => { d += ` H${x(t)} V${y(i + 1)}`; });
+    d += ` H${x(endSec)}`;
+    const area = d + ` V${y(0)} Z`;
+    const exp = expected ? `<line x1="${L}" x2="${W - R}" y1="${y(expected)}" y2="${y(expected)}" style="stroke:var(--muted)" stroke-width="1.5" stroke-dasharray="5 4"/>` : "";
+    const tgt = `<line x1="${x(target)}" x2="${x(target)}" y1="${T}" y2="${H - B}" style="stroke:var(--idle)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+    const endDot = `<circle cx="${x(endSec)}" cy="${y(times.length)}" r="5" style="fill:var(--safe);stroke:var(--surface)" stroke-width="2"/>`;
+    el.innerHTML =
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${times.length} people accounted for over ${Math.round(endSec / 60)} minutes${expected ? " out of " + expected + " expected" : ""}">` +
+      grid + labels + tgt + exp +
+      `<path d="${area}" style="fill:var(--safe)" fill-opacity="0.12"/>` +
+      `<path d="${d}" fill="none" style="stroke:var(--safe)" stroke-width="2" stroke-linejoin="round"/>` +
+      endDot +
+      `<line id="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" style="stroke:var(--ink)" stroke-width="1" visibility="hidden"/>` +
+      `<rect id="hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>` +
+      `</svg><div class="tip" id="tip" hidden></div>`;
+
+    const svg = el.querySelector("svg"), cross = el.querySelector("#cross"), tip = el.querySelector("#tip");
+    const move = (ev) => {
+      const r = svg.getBoundingClientRect();
+      const px = ((ev.clientX - r.left) / r.width) * W;
+      const sec = Math.max(0, Math.min(endSec, ((px - L) / (W - L - R)) * xMaxMin * 60));
+      const n = times.filter((t) => t <= sec).length;
+      cross.setAttribute("x1", x(sec)); cross.setAttribute("x2", x(sec));
+      cross.setAttribute("visibility", "visible");
+      tip.hidden = false;
+      tip.textContent = fmtDur(sec) + " · " + n + (expected ? " of " + expected : "") + " accounted for";
+      tip.style.left = (x(sec) / W) * r.width + "px";
+      tip.style.top = (y(n) / H) * r.height + "px";
+    };
+    const hide = () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; };
+    svg.addEventListener("pointermove", move);
+    svg.addEventListener("pointerleave", hide);
+  }
+
+  function renderHistory() {
+    const target = targetMin * 60;
+    if (document.activeElement !== $("targetMin")) $("targetMin").value = targetMin;
+    $("histWrap").hidden = history.length === 0;
+    $("histEmpty").hidden = history.length > 0;
+    const recent = history.slice(0, 5);
+    const met = recent.filter((h) => h.t100 != null && h.t100 <= target).length;
+    $("histSummary").textContent = recent.length
+      ? "Last " + recent.length + (recent.length === 1 ? " event: " : " events: ") + met + " reached 100% within the " + targetMin + " min target."
+      : "";
+    $("histBody").replaceChildren(...history.map((h) => {
+      const tr = document.createElement("tr");
+      tr.tabIndex = 0;
+      tr.setAttribute("aria-selected", String(selected === h.id));
+      const cells = [
+        fmtDate(h.startedAt) + " " + fmtClock(h.startedAt),
+        h.weather ? WEATHER[h.weather].replace(" weather", "") : "–",
+        fmtDur((h.endedAt - h.startedAt) / 1000),
+        h.expected ? h.accounted + "/" + h.expected : String(h.accounted),
+        fmtDur(h.t90), fmtDur(h.t100), String(h.help),
+      ];
+      cells.forEach((c, i) => {
+        const td = document.createElement("td");
+        if (i > 1) td.className = "num";
+        td.textContent = c;
+        tr.append(td);
+      });
+      const td = document.createElement("td");
+      td.append(h.t100 == null ? pill("help", "Incomplete") : h.t100 <= target ? pill("safe", "Met target") : pill("missing", "Over target"));
+      tr.append(td);
+      const pick = () => { selected = selected === h.id ? null : h.id; render(); };
+      tr.onclick = pick;
+      tr.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+      return tr;
+    }));
+  }
+
+  let renderSeq = 0;
+  async function renderRoll() {
+    const seq = ++renderSeq;
+    const st = rollState();
+    const admin = isAdmin && view === "admin";
+    const ids = [...new Set([...st.rows, ...people].map((r) => r.id).filter(Boolean))];
+    const ps = user && ids.length ? await user.profiles(ids) : {};
+    if (seq !== renderSeq) return;
+    const nameOf = (r) => (r.id ? (ps[r.id] && ps[r.id].name) || "Someone" : r.name || "Someone");
+
+    const nHelp = st.rows.filter((r) => r.status === "help").length;
+    $("uHelp").textContent = nHelp;
+    $("uSafe").textContent = st.rows.length - nHelp;
+    $("uTotal").textContent = st.rows.length;
+    $("rollMeta").textContent = drill ? fmtDate(drill.startedAt) + " " + fmtClock(drill.startedAt) : "";
+
+    if (admin) {
+      renderPerformance(st);
+      renderHistory();
+      $("missingBlock").hidden = !(drill && st.missing.length);
+      $("missingList").replaceChildren(...st.missing.map((p) =>
+        personRow(p.id ? ps[p.id] : null, nameOf(p), p.id ? "" : "No Claude account",
+          [pill("missing", "Missing"), smallBtn("Mark safe", "go", () => setMark(p.key, { status: "safe", at: Date.now() }))])));
+    } else {
+      $("missingBlock").hidden = true;
+    }
+
+    const ul = $("roster");
+    ul.hidden = st.rows.length === 0;
+    $("emptyRoster").hidden = st.rows.length > 0;
+    $("emptyRoster").textContent = drill
+      ? "No one has checked in yet. Names appear here as people tap “Check in”."
+      : "The roll call appears here once an evacuation starts.";
+    ul.replaceChildren(...st.rows.map((r) => {
+      const t = document.createElement("time");
+      t.className = "mono";
+      t.textContent = fmtClock(r.at);
+      const extras = [pill(r.status, r.status === "help" ? "Needs help" : "Safe"), t];
+      if (r.marked && admin) extras.push(smallBtn("Undo", "", () => setMark(r.key, null)));
+      const detail = r.marked ? "Marked safe by an admin" : r.location || "No location given";
+      return personRow(r.id ? ps[r.id] : null, nameOf(r) + (r.id && r.id === uid ? " (you)" : ""), detail, extras);
+    }));
+
+    if (admin) {
+      $("rosterCount").textContent = people.length;
+      const rl = $("rosterList");
+      rl.hidden = people.length === 0;
+      rl.replaceChildren(...people.map((p) =>
+        personRow(p.id ? ps[p.id] : null, nameOf(p), p.id ? "" : "No Claude account",
+          [smallBtn("Remove", "", () => saveRoster(people.filter((x) => x.key !== p.key)))])));
+    }
+  }
+
+  function render() { applyView(); renderStatus(); renderMine(); renderRoll(); }
+
+  function errText(e, action) {
+    const code = e && e.code;
+    if (code === "invalid_argument") return "You don't have permission to " + action + ". Ask the page owner for the right access in the Share menu.";
+    if (code === "quota_exceeded") return "Storage for this roll call is full, so " + action + " failed. Ask the page owner to clear old records.";
+    if (code === "resource_exhausted") return "Too many requests at once. Wait a few seconds and try again.";
+    return "Couldn't " + action + " because the connection dropped. Check your signal and tap again.";
+  }
+
+  async function run(action, fn) {
+    if (busy) return;
+    busy = true; showError(""); render();
+    try { await fn(); }
+    catch (e) { showError(errText(e, action)); }
+    finally { busy = false; render(); }
+  }
+
+  function checkIn(status) {
+    if (!drill || !drill.active) return;
+    const me = current().find((c) => c.id === uid);
+    const now = Date.now();
+    return run("check in", () => db.doc("checkins/" + uid).set({
+      status, drillId: drill.id, at: now, firstAt: me ? me.firstAt || me.at : now,
+      location: $("location").value.trim().slice(0, 80),
+    }));
+  }
+
+  async function startDrill(weather) {
+    const now = Date.now();
+    selected = null;
+    await run("start the evacuation", () =>
+      db.doc("drill/current").set({ id: "e" + now, active: true, startedAt: now, endedAt: null, weather, point: points[weather] || null }));
+    if (!(points[weather] && points[weather].name) && $("error").hidden) {
+      showError("Started, but no " + WEATHER[weather].toLowerCase() + " assembly point is saved, so staff can't see where to go. Add one under Assembly points, then tap “Send point to staff”.");
+    }
+  }
+
+  function switchWeather(weather) {
+    if (!drill || !drill.active) return;
+    return run("switch the assembly point", () =>
+      db.doc("drill/current").update({ weather, point: points[weather] || null }));
+  }
+
+  function endDrill() {
+    if (!drill) return;
+    const st = rollState();
+    const now = Date.now();
+    const expected = people.length;
+    const times = st.times.map((t) => Math.round(t));
+    return run("end the evacuation", async () => {
+      await db.doc("history/" + drill.id).set({
+        id: drill.id, startedAt: drill.startedAt, endedAt: now, expected, weather: drill.weather || null,
+        accounted: st.rows.length, help: st.rows.filter((r) => r.status === "help").length,
+        missingAtEnd: st.missing.length, times,
+        t50: timeTo(times, expected, 0.5), t90: timeTo(times, expected, 0.9), t100: timeTo(times, expected, 1),
+      });
+      await db.doc("drill/current").update({ active: false, endedAt: now });
+    });
+  }
+
+  function saveRoster(next) {
+    return run("update the staff list", () => db.doc("roster/list").set({ people: next }));
+  }
+
+  function setMark(key, value) {
+    if (!drill) return;
+    const next = Object.assign({}, marks);
+    if (value) next[key] = value; else delete next[key];
+    return run("mark this person", () => db.doc("marks/" + drill.id).set({ byKey: next }));
+  }
+
+  function watchMarks() {
+    const want = drill ? drill.id : null;
+    if (want === marksFor) return;
+    if (marksUnsub) marksUnsub();
+    marksUnsub = null; marksFor = want; marks = {};
+    if (!want) return;
+    marksUnsub = db.doc("marks/" + want).onSnapshot((snap) => {
+      marks = (snap.exists && snap.data().byKey) || {};
+      render();
+    }, lostConnection);
+  }
+
+  function lostConnection() { showError("Lost the live connection. Reload the page to reconnect."); }
+
+  // Staff list editing (admins)
+  async function showResults(q) {
+    const hits = await user.search(q);
+    const have = new Set(people.map((p) => p.id).filter(Boolean));
+    $("searchResults").replaceChildren(...hits.filter((h) => !have.has(h.id)).map((h) => {
+      const li = document.createElement("li");
+      const img = document.createElement("img");
+      img.alt = ""; img.src = h.avatarUrl;
+      const s = document.createElement("span");
+      s.textContent = h.name;
+      li.append(img, s, smallBtn("Add", "go", () => {
+        $("peopleSearch").value = "";
+        $("searchResults").replaceChildren();
+        saveRoster(people.concat({ key: h.id, id: h.id }));
+      }));
+      return li;
+    }));
+  }
+  $("peopleSearch").addEventListener("focus", (e) => { if (user) showResults(e.target.value); });
+  $("peopleSearch").addEventListener("input", (e) => { if (user) showResults(e.target.value.trim()); });
+  $("addNameForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("plainName").value.trim().slice(0, 60);
+    if (!name) { showError("Type a name before tapping Add."); return; }
+    $("plainName").value = "";
+    saveRoster(people.concat({ key: "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name }));
+  });
+  $("targetForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = Math.round(Number($("targetMin").value));
+    if (!(v >= 1 && v <= 120)) { showError("Set the target between 1 and 120 minutes."); return; }
+    run("save the target", () => db.doc("settings/main").set({ targetMin: v, points }));
+  });
+  $("pointsForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const read = (k) => {
+      const name = $(k + "Name").value.trim().slice(0, 80);
+      return name ? { name, directions: $(k + "Dir").value.trim().slice(0, 160) } : null;
+    };
+    const next = { dry: read("dry"), wet: read("wet") };
+    if (!next.dry && !next.wet) { showError("Enter at least one assembly point before saving."); return; }
+    run("save the assembly points", async () => {
+      await db.doc("settings/main").set({ targetMin, points: next });
+      $("pointsNote").textContent = "Saved. Used the next time you start an evacuation.";
+    });
+  });
+  function fillPoints() {
+    const form = $("pointsForm");
+    if (form.contains(document.activeElement)) return;
+    for (const k of ["dry", "wet"]) {
+      $(k + "Name").value = (points[k] && points[k].name) || "";
+      $(k + "Dir").value = (points[k] && points[k].directions) || "";
+    }
+  }
+
+  $("btnSafe").addEventListener("click", () => checkIn("safe"));
+  $("btnHelp").addEventListener("click", () => checkIn("help"));
+
+  function setViewFromHash() {
+    const h = location.hash.slice(1);
+    view = isAdmin && h !== "checkin" ? "admin" : "user";
+    render();
+  }
+  window.addEventListener("hashchange", setViewFromHash);
+  $("tabUser").addEventListener("click", (e) => { e.preventDefault(); view = "user"; render(); });
+  $("tabAdmin").addEventListener("click", (e) => { e.preventDefault(); view = "admin"; render(); });
+
+  async function init() {
+    applyView();
+    if (!window.claude || !window.claude.use) {
+      $("statusTitle").textContent = "Open this page on claude.ai";
+      $("statusSub").textContent = "Check-in needs your Claude sign-in to know who you are.";
+      return;
+    }
+    [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (!db || !user) {
+      $("statusTitle").textContent = "Sign in to check in";
+      $("statusSub").textContent = "Sign in to your Claude account and reopen this link to record your check-in.";
+      return;
+    }
+    uid = await user.id();
+    isAdmin = await user.canEdit();
+    setViewFromHash();
+    if (!uid) showError("We couldn't confirm who you are, so check-in is turned off. Sign in to your organisation's Claude account and reopen this link.");
+
+    db.doc("drill/current").onSnapshot((snap) => {
+      drill = snap.exists ? snap.data() : null;
+      watchMarks();
+      render();
+    }, lostConnection);
+
+    db.collection("checkins").onSnapshot((snap) => {
+      checkins = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+      render();
+    }, lostConnection);
+
+    db.doc("roster/list").onSnapshot((snap) => {
+      people = (snap.exists && Array.isArray(snap.data().people)) ? snap.data().people : [];
+      render();
+    }, lostConnection);
+
+    if (isAdmin) {
+      db.collection("history").orderBy("startedAt", "desc").limit(50).onSnapshot((snap) => {
+        history = snap.docs.map((d) => d.data());
+        render();
+      }, lostConnection);
+      db.doc("settings/main").onSnapshot((snap) => {
+        const v = snap.exists && Number(snap.data().targetMin);
+        targetMin = v >= 1 ? v : 10;
+        const pts = snap.exists && snap.data().points;
+        points = { dry: (pts && pts.dry) || null, wet: (pts && pts.wet) || null };
+        fillPoints();
+        render();
+      }, lostConnection);
+    }
+
+    // Keep elapsed times fresh; reads only, no writes.
+    setInterval(() => { if (drill && drill.active) render(); else renderStatus(); }, 15000);
+  }
+  init();
+})();
+</script>
