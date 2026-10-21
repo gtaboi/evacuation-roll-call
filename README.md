@@ -51,7 +51,7 @@ The anon key is designed to be public; the database rules decide what each perso
 
 ### 4. Google Maps (optional)
 Setting assembly points works in three ways:
-- **Without a key:** **Pick on map** opens Google Maps in a new tab. Right-click (computer) or long-press (phone) the exact spot, copy the coordinates, and paste them into **Latitude**; the app splits them into latitude and longitude. A full Google Maps link pasted into Latitude works too (short `maps.app.goo.gl` links don't).
+- **Without a key:** **Pick on map** opens Google Maps in a new tab. Right-click (computer) or long-press (phone) the exact spot, copy the coordinates, and paste them into **Paste from Google Maps**. A full Google Maps link works too (short `maps.app.goo.gl` links don't).
 - **With a key:** typing a location name suggests places (Google Places), and **Pick on map** opens a map inside the app: move the map until the pin is on the gathering spot, with the check-in radius drawn around it.
 - **Use my location** while standing at the point, either way.
 
@@ -73,7 +73,7 @@ The key is visible to anyone who opens the site, like every browser Maps key; th
 - Staff type their full name once; the phone remembers it, and a random ID stored on the phone lets them update their own check-in (for example from "safe" to "need help").
 - Check-ins are matched to the expected staff list by name, ignoring capitals and extra spaces. A name that doesn't match shows as "Not on staff list" for admins, who can mark the right person safe by hand.
 - Location is read only when someone taps a check-in button. The app stores the **distance** from the point and the GPS accuracy, not the coordinates.
-- A safe check-in needs the distance to be within the point's radius (default 100 m, adjustable per point). Phones indoors can be off by 20–50 m, so check in outdoors at the point.
+- A safe check-in needs the distance to be within the point's radius (100 m, set by `defaultRadiusM` in `config.js`; admins no longer edit it per point). Phones indoors can be off by 20–50 m, so check in outdoors at the point.
 - If someone can't share location (blocked, no signal, old phone), an admin confirms them another way and uses **Mark safe**.
 
 ## Limits to know

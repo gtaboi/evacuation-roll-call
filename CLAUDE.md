@@ -41,7 +41,7 @@ Pages caches files for ~10 minutes and phones keep stale copies, so asset URLs c
 
 **`config.js`** holds the Supabase URL and the **anon** key (public by design; RLS and the functions are the security boundary), plus `options.providers`, `options.defaultRadiusM` and the optional `options.googleMapsApiKey`. An empty URL or key shows the setup screen.
 
-**Google Maps** is used only in the admin "Assembly points" form and is loaded lazily (`loadGoogleMaps()`), only when a key is set. Place suggestions use the Places API (New) programmatic `AutocompleteSuggestion` (the legacy `Autocomplete` widget isn't available to new Google Cloud customers). The map picker keeps a fixed CSS pin over the map centre and reads `map.getCenter()`, so it needs no marker library or Map ID. Without a key, "Pick on map" opens google.com/maps in a new tab, and `parseCoords()` accepts pasted `lat, lng` text or full Maps links in the Latitude/Longitude fields.
+**Google Maps** is used only in the admin "Assembly points" form and is loaded lazily (`loadGoogleMaps()`), only when a key is set. Place suggestions use the Places API (New) programmatic `AutocompleteSuggestion` (the legacy `Autocomplete` widget isn't available to new Google Cloud customers). The map picker keeps a fixed CSS pin over the map centre and reads `map.getCenter()`, so it needs no marker library or Map ID. Without a key, "Pick on map" opens google.com/maps in a new tab, and `parseCoords()` reads pasted `lat, lng` text or full Maps links from each point's "Paste from Google Maps" box. Latitude, longitude and radius are hidden inputs (no visible fields); radius is always `defaultRadiusM` when a point is saved.
 
 ## SQL files
 

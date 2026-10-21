@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=6";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=7";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -549,10 +549,10 @@ function renderMapLink(k) {
   if (isFinite(lat) && isFinite(lng)) {
     const a = document.createElement("a");
     a.href = mapUrl({ lat, lng }); a.target = "_blank"; a.rel = "noopener";
-    a.textContent = "Check on map";
+    a.textContent = "Pin set: check on map";
     el.append(a);
   } else {
-    el.textContent = "No GPS position yet";
+    el.textContent = "No pin yet";
   }
 }
 
@@ -660,7 +660,7 @@ async function checkIn(status) {
     try {
       S.mine = await q(sb.rpc("public_checkin", {
         p_event: ev.id, p_device: deviceId(), p_name: name, p_status: status,
-        p_note: $("note").value.trim().slice(0, 80) || null,
+        p_note: null,
         p_distance: dist != null ? Math.round(dist) : null,
         p_accuracy: coords ? Math.round(coords.accuracy) : null,
       }));
@@ -679,7 +679,7 @@ function readPoint(k) {
   const name = $(k + "Name").value.trim().slice(0, 80);
   if (!name) return null;
   const lat = parseFloat($(k + "Lat").value), lng = parseFloat($(k + "Lng").value);
-  const radius = Math.min(1000, Math.max(20, parseInt($(k + "Radius").value, 10) || DEFAULT_RADIUS));
+  const radius = DEFAULT_RADIUS; // no longer edited per point
   const valid = isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
   return { name, directions: $(k + "Dir").value.trim().slice(0, 160), lat: valid ? lat : null, lng: valid ? lng : null, radius };
 }
@@ -845,12 +845,12 @@ async function openPicker(k) {
   const radius = Math.min(1000, Math.max(20, parseInt($(k + "Radius").value, 10) || DEFAULT_RADIUS));
   const start = fieldCoords(k) || fieldCoords(k === "dry" ? "wet" : "dry");
   if (!MAPS_KEY) {
-    // No key: open Google Maps itself; the admin copies the coordinates back into Latitude.
+    // No key: open Google Maps itself; the admin pastes the coordinates back into the Paste box.
     const url = start ? "https://www.google.com/maps/@" + start.lat + "," + start.lng + ",19z"
       : $(k + "Name").value.trim() ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent($(k + "Name").value.trim())
       : "https://www.google.com/maps";
     window.open(url, "_blank", "noopener");
-    $("pointsNote").textContent = "In Google Maps, right-click (computer) or long-press (phone) the exact spot and copy the coordinates, then paste them into " + WEATHER[k] + " → Latitude.";
+    $("pointsNote").textContent = "In Google Maps, right-click (computer) or long-press (phone) the exact spot and copy the coordinates, then paste them into " + WEATHER[k] + " → Paste from Google Maps.";
     return;
   }
   pickerKey = k;
@@ -885,7 +885,7 @@ async function openPicker(k) {
   } catch (e) {
     console.error(e);
     $("mapDialog").close();
-    showError("Google Maps couldn't load. Check your connection and the API key, or paste coordinates into Latitude instead.");
+    showError("Google Maps couldn't load. Check your connection and the API key, or paste coordinates from Google Maps instead.");
   }
 }
 
@@ -915,15 +915,17 @@ for (const k of ["dry", "wet"]) {
     suggestTimer = setTimeout(() => suggestPlaces(k), 300);
   });
   $(k + "Name").addEventListener("blur", () => setTimeout(() => { $(k + "Suggest").hidden = true; }, 150));
-  for (const f of ["Lat", "Lng"]) {
-    $(k + f).addEventListener("input", () => {
-      const v = $(k + f).value;
-      if (!/[,@!]/.test(v)) return;
-      const c = parseCoords(v);
-      if (c) setFieldCoords(k, c.lat, c.lng, "Coordinates filled in. Check on map, then save.");
-      else if (/goo\.gl|maps\.app/.test(v)) $("pointsNote").textContent = "Short share links can't be read. In Google Maps, copy the coordinates (they look like 1.2345, 103.8765) instead.";
-    });
-  }
+  $(k + "Paste").addEventListener("input", () => {
+    const v = $(k + "Paste").value;
+    if (!v.trim()) return;
+    const c = parseCoords(v);
+    if (c) {
+      $(k + "Paste").value = "";
+      setFieldCoords(k, c.lat, c.lng, "Pin set from Google Maps. Check on map, then save.");
+    } else if (/goo\.gl|maps\.app/.test(v)) {
+      setTimeout(() => { $("pointsNote").textContent = "Short share links can't be read. In Google Maps, copy the coordinates (they look like 1.2345, 103.8765) instead."; }, 0);
+    }
+  });
 }
 $("pointsForm").addEventListener("click", (e) => {
   const k = e.target.dataset && e.target.dataset.pick;
