@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=12";
-import { normName, matchRoll, timeTo } from "./roll.js?v=12";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=13";
+import { normName, matchRoll, timeTo } from "./roll.js?v=13";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -158,12 +158,27 @@ async function loadAdminData() {
     q(sb.from("event_summaries").select("*").order("event_id", { ascending: false }).limit(50)),
     ev ? q(sb.from("marks").select("*").eq("event_id", ev.id)) : Promise.resolve([]),
   ]);
+  if (!S.isAdmin) return; // signed out while loading
   S.checkins = checkins;
   S.roster = roster;
   S.settings = settings[0] || { target_min: 10, points: {} };
   S.admins = admins;
   S.summaries = sums;
   S.marks = Object.fromEntries(marks.map((m) => [m.roster_id, m]));
+}
+// Forget everything only admins may see (names, emails, history) and empty the admin lists on the page,
+// so nothing is left behind on a shared phone after signing out.
+function clearAdminData() {
+  Object.assign(S, {
+    checkins: [], roster: [], marks: {}, summaries: [], admins: [], matches: [], selected: null,
+    settings: { target_min: 10, points: {} },
+  });
+  delete $("pointsForm").dataset.dirty;
+  const st = rollState();
+  renderAdminLists(st);
+  renderPerformance(st);
+  renderHistory();
+  renderPoints();
 }
 
 let refreshing = null;
@@ -282,8 +297,8 @@ function showScreen(name) {
 
 function applyView() {
   const admin = S.isAdmin && S.view === "admin";
+  // renderAdminLists() then hides #missingBlock again when nobody is missing.
   document.querySelectorAll("[data-view]").forEach((el) => {
-    if (el.id === "missingBlock") return;
     el.hidden = el.dataset.view !== (admin ? "admin" : "user");
   });
   $("tabs").hidden = !S.isAdmin;
@@ -1207,6 +1222,7 @@ async function onSession(session) {
   S.uid = uid;
   S.email = uid ? (session.user.email || "").toLowerCase() : null;
   S.isAdmin = false;
+  clearAdminData();
   if (uid) {
     try { S.isAdmin = !!(await q(sb.rpc("is_admin"))); }
     catch (e) { console.error(e); }
