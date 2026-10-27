@@ -1,5 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=10";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=11";
+import { normName, matchRoll, timeTo } from "./roll.js?v=11";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
@@ -71,7 +72,6 @@ function fmtDur(sec) {
 }
 const fmtM = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m");
 const mapUrl = (p) => "https://www.google.com/maps/search/?api=1&query=" + p.lat + "," + p.lng;
-const normName = (n) => (n || "").trim().replace(/\s+/g, " ").toLowerCase();
 
 function showError(text) {
   $("error").textContent = text || "";
@@ -202,40 +202,32 @@ function subscribe() {
 
 // ---------- roll call (admin) ----------
 
-function timeTo(times, expected, share) {
-  if (!expected) return null;
-  const need = Math.ceil(share * expected);
-  return times.length >= need ? times[need - 1] : null;
-}
-
-// A check-in belongs to a staff-list person by exact (normalized) name, or by an admin link
-// (a mark carrying checkin_device). Plain marks without a device are "marked safe by an admin".
+// Matching follows matchRoll() in roll.js. `accounted` and `times` count staff-list people once each
+// (visitors and second phones don't add to them); with no staff list they fall back to every check-in.
 function rollState() {
   const ev = S.event;
-  const rosterById = new Map(S.roster.map((p) => [p.id, p]));
-  const rosterByName = new Map(S.roster.map((p) => [normName(p.name), p]));
-  const linkByDevice = new Map(Object.values(S.marks).filter((m) => m.checkin_device).map((m) => [m.checkin_device, m.roster_id]));
-  const matched = new Set();
+  const marks = Object.values(S.marks);
+  const { personOf, accountedAt, markedSafe, missing } = matchRoll({ roster: S.roster, checkins: S.checkins, marks });
+  const linkByDevice = new Map(marks.filter((m) => m.checkin_device).map((m) => [m.checkin_device, m.roster_id]));
   const rows = S.checkins.map((c) => {
-    const linkedId = linkByDevice.get(c.device_id);
-    const p = (linkedId && rosterById.get(linkedId)) || rosterByName.get(normName(c.name));
-    if (p) matched.add(p.id);
+    const p = personOf.get(c.device_id);
     return {
       key: c.device_id, device: c.device_id, name: c.name, status: c.status, note: c.note,
       distance: c.distance_m, accuracy: c.accuracy_m, at: ms(c.at), firstAt: ms(c.first_at), marked: false,
-      onRoster: !!p, linkedTo: linkedId && p ? p : null,
+      onRoster: !!p, linkedTo: p && linkByDevice.get(c.device_id) === p.id ? p : null,
     };
   });
-  for (const p of S.roster) {
-    if (matched.has(p.id)) continue;
+  for (const p of markedSafe) {
     const m = S.marks[p.id];
-    if (m && !m.checkin_device) rows.push({ key: p.id, name: p.name, status: m.status, at: ms(m.at), firstAt: ms(m.at), marked: true, rosterId: p.id, onRoster: true });
+    rows.push({ key: p.id, name: p.name, status: m.status, at: ms(m.at), firstAt: ms(m.at), marked: true, rosterId: p.id, onRoster: true });
   }
   rows.sort((a, b) => (a.status === "help" ? 0 : 1) - (b.status === "help" ? 0 : 1) || b.at - a.at);
-  const missing = ev ? S.roster.filter((p) => !matched.has(p.id) && !(S.marks[p.id] && !S.marks[p.id].checkin_device)) : [];
   const unmatched = rows.filter((r) => !r.marked && !r.onRoster);
-  const times = ev ? rows.map((r) => Math.max(0, (r.firstAt - ms(ev.started_at)) / 1000)).sort((a, b) => a - b) : [];
-  return { rows, missing, unmatched, times };
+  const byPerson = S.roster.length > 0;
+  const accounted = byPerson ? accountedAt.size : rows.length;
+  const firstTimes = byPerson ? [...accountedAt.values()] : rows.map((r) => r.firstAt);
+  const times = ev ? firstTimes.map((t) => Math.max(0, (t - ms(ev.started_at)) / 1000)).sort((a, b) => a - b) : [];
+  return { rows, missing: ev ? missing : [], unmatched, accounted, times };
 }
 
 // ---------- rendering helpers ----------
@@ -399,7 +391,7 @@ function renderMine() {
 function renderPerformance(st) {
   const ev = S.event;
   const expected = S.roster.length;
-  const acc = st.rows.length;
+  const acc = st.accounted;
   const help = st.rows.filter((r) => r.status === "help").length;
   const live = !!(ev && ev.active);
   const start = ev && ms(ev.started_at);
@@ -763,7 +755,7 @@ function endEvent() {
       event_id: ev.id,
       data: {
         startedAt: ms(ev.started_at), endedAt: now, weather: ev.weather || null, expected,
-        accounted: st.rows.length, help: st.rows.filter((r) => r.status === "help").length,
+        accounted: st.accounted, help: st.rows.filter((r) => r.status === "help").length,
         missingAtEnd: st.missing.length, times,
         t50: timeTo(times, expected, 0.5), t90: timeTo(times, expected, 0.9), t100: timeTo(times, expected, 1),
       },

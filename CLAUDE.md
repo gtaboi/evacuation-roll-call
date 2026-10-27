@@ -8,10 +8,11 @@ Evacuation Roll Call: staff check in at an assembly point during an evacuation; 
 
 ## Commands
 
-There is no build step, package.json, linter or test suite. The site is plain ES modules loaded straight by the browser; the Supabase client comes from jsDelivr (`@supabase/supabase-js@2.45.4/+esm`).
+There is no build step. The site is plain ES modules loaded straight by the browser; the Supabase client comes from jsDelivr (`@supabase/supabase-js@2.45.4/+esm`). `package.json` exists only for dev tools (ESLint and tests); nothing in it is served or bundled.
 
 - **Run locally:** serve the folder over HTTP (ES modules don't load from `file://`) and open `index.html`. Geolocation needs `localhost` or HTTPS.
-- **Syntax check:** `node --check` won't parse `app.js` as a module under its `.js` name; copy it to a `.mjs` file first and check that. For the Edge Function (no Deno installed): `npx esbuild supabase/functions/assist/index.ts --format=esm --outfile=<tmp>/assist.js` catches TypeScript and syntax errors.
+- **Lint and test:** `npm install` once, then `npm run lint` (ESLint 9, `eslint.config.js`; ignores `supabase/`, `promo/` and the Artifact) and `npm test` (`node --test` on `tests/*.test.mjs`). `.github/workflows/lint.yml` runs both on every push and PR.
+- **Syntax check of the Edge Function** (no Deno installed): `npx esbuild supabase/functions/assist/index.ts --format=esm --outfile=<tmp>/assist.js` catches TypeScript syntax errors (not type errors).
 - **Deploy:** push to `main`. GitHub Pages serves the repo root; `gh api repos/hermannwwr-cmyk/evacuation-roll-call/pages/builds/latest` shows the build status.
 - **Settings from `.env`:** `node tools/env-to-config.mjs` copies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `GOOGLE_MAPS_API_KEY` from the git-ignored `.env` into `config.js` (the only file the browser reads). It refuses non-`anon` Supabase keys. Bump `?v=` afterwards. `.env` also holds `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`, which are never copied anywhere: they're a local reference copy for calling the LLM directly. The deployed function reads its own Supabase secrets.
 - **Owner-only steps:** there is no migration runner and no Supabase CLI login here. SQL files are pasted into the Supabase SQL Editor, and changes to `supabase/functions/assist/index.ts` only go live when the owner redeploys the function in the dashboard. Function secrets override the code's defaults, so changing a default such as the model also needs the `LLM_MODEL` secret updated. Pushing to GitHub doesn't affect either.
@@ -19,7 +20,7 @@ There is no build step, package.json, linter or test suite. The site is plain ES
 
 ## Release rule: bump the cache version
 
-Pages caches files for ~10 minutes and phones keep stale copies, so asset URLs carry `?v=N`. On every release, bump the same number in all three places: `index.html` (`styles.css?v=` and `app.js?v=`) and the `./config.js?v=` import at the top of `app.js`.
+Pages caches files for ~10 minutes and phones keep stale copies, so asset URLs carry `?v=N`. On every release, bump the same number in all four places: `index.html` (`styles.css?v=` and `app.js?v=`) and the `./config.js?v=` and `./roll.js?v=` imports at the top of `app.js`.
 
 ## Architecture
 
@@ -30,7 +31,7 @@ Pages caches files for ~10 minutes and phones keep stale copies, so asset URLs c
 **Data model** (`supabase/schema.sql`):
 - `events`: the newest row is "the current event". Starting an event deactivates any active one and inserts a new row. `events.point` holds a snapshot of the dry- or wet-weather assembly point (`{name, directions, lat, lng, radius}`), copied from `settings.points` at start or switch time. Later edits to settings don't affect a running event until an admin taps "Send point to staff".
 - `checkins`: primary key `(event_id, device_id)`. Stores distance and accuracy, never coordinates. `note` is no longer collected (the staff form has no note field) and is always null for new check-ins.
-- `roster` (expected staff) is matched to check-ins **by normalized name** (trimmed, collapsed spaces, lowercase) in the client (`normName` / `rollState` in `app.js`). `marks` records admin "Mark safe" per event and roster entry.
+- `roster` (expected staff) is matched to check-ins by `matchRoll()` in `roll.js`: an admin link (a `marks` row with `checkin_device`) wins, else **normalized name** (trimmed, collapsed spaces, lowercase). Each roster person is accounted for once, at their earliest check-in or their plain mark's time; "accounted %" and t50/t90/t100 count people, not check-in rows (visitors and second phones don't add). The block between the `roll rule` markers is copied verbatim into `supabase/functions/assist/index.ts`; `npm test` fails if the copies differ, so edit both, and the owner must redeploy the function. `marks` records admin "Mark safe" per event and roster entry.
 - `event_summaries`: written by the client when an admin ends an event (times, t50/t90/t100). Performance history is read only from here.
 - `settings`: a single row (`id = 1`) holding the target minutes and both assembly points.
 
