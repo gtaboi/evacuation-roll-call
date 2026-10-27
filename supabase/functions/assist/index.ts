@@ -17,7 +17,41 @@ const BASE = (Deno.env.get("LLM_BASE_URL") ?? "https://opencode.ai/zen/go/v1").r
 const MODEL = Deno.env.get("LLM_MODEL") ?? "glm-5.3-flash";
 const KEY = Deno.env.get("LLM_API_KEY") ?? "";
 
-const normName = (n: string) => (n ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+// Copied verbatim from roll.js (the website uses the same rule); tests/roll.test.mjs checks the copies match.
+// ---- roll rule: start ----
+const normName = (n) => (n || "").trim().replace(/\s+/g, " ").toLowerCase();
+
+// Who each check-in belongs to, and who on the staff list is accounted for.
+// A check-in belongs to a staff-list person by an admin link (a mark carrying checkin_device), which wins,
+// or else by exact normalized name. A link only counts while its check-in exists. A mark without a device
+// means "marked safe by an admin". Each person is accounted for once, at their earliest check-in
+// (first_at), or at the mark's time if they were only marked safe.
+function matchRoll({ roster, checkins, marks }) {
+  const rosterById = new Map(), rosterByName = new Map(), linkByDevice = new Map();
+  for (const p of roster) { rosterById.set(p.id, p); rosterByName.set(normName(p.name), p); }
+  for (const m of marks) if (m.checkin_device) linkByDevice.set(m.checkin_device, m.roster_id);
+  const personOf = new Map();
+  const accountedAt = new Map();
+  const unmatched = [];
+  for (const c of checkins) {
+    const linkedId = linkByDevice.get(c.device_id);
+    const p = (linkedId && rosterById.get(linkedId)) || rosterByName.get(normName(c.name)) || null;
+    personOf.set(c.device_id, p);
+    if (!p) { unmatched.push(c); continue; }
+    const t = Date.parse(c.first_at);
+    if (!accountedAt.has(p.id) || t < accountedAt.get(p.id)) accountedAt.set(p.id, t);
+  }
+  const markedSafe = [];
+  for (const m of marks) {
+    const p = rosterById.get(m.roster_id);
+    if (!p || m.checkin_device || accountedAt.has(p.id)) continue;
+    markedSafe.push(p);
+    accountedAt.set(p.id, Date.parse(m.at));
+  }
+  const missing = roster.filter((p) => !accountedAt.has(p.id));
+  return { personOf, accountedAt, markedSafe, missing, unmatched };
+}
+// ---- roll rule: end ----
 
 // Retry pauses (ms) for 429 and 5xx answers: the provider's upstream is intermittently "unavailable".
 const RETRY_DELAYS = [1000, 2500, 5000];
@@ -81,19 +115,11 @@ Deno.serve(async (req) => {
     for (const r of [ev, checkins, roster, marks]) if (r.error) throw r.error;
     if (!ev.data) return json({ error: "That evacuation wasn't found." }, 404);
 
-    const markByRoster = new Map(marks.data!.map((m) => [m.roster_id, m]));
-    const linkedDevices = new Set(marks.data!.filter((m) => m.checkin_device).map((m) => m.checkin_device));
-    const rosterByName = new Map(roster.data!.map((p) => [normName(p.name), p]));
-    const matchedRoster = new Set<string>();
-    for (const c of checkins.data!) {
-      const p = rosterByName.get(normName(c.name));
-      if (p) matchedRoster.add(p.id);
-    }
-    for (const m of marks.data!) matchedRoster.add(m.roster_id);
+    const roll = matchRoll({ roster: roster.data!, checkins: checkins.data!, marks: marks.data! });
 
     if (task === "match") {
-      const unmatched = checkins.data!.filter((c) => !rosterByName.has(normName(c.name)) && !linkedDevices.has(c.device_id));
-      const open = roster.data!.filter((p) => !matchedRoster.has(p.id));
+      const unmatched = roll.unmatched;
+      const open = roll.missing;
       if (!unmatched.length || !open.length) return json({ matches: [] });
 
       const answer = await llm([
@@ -134,10 +160,10 @@ Deno.serve(async (req) => {
         status: c.status,
         minutes_after_alarm: Math.round((Date.parse(c.first_at) - start) / 6000) / 10,
         distance_m: c.distance_m,
-        on_staff_list: rosterByName.has(normName(c.name)) || linkedDevices.has(c.device_id),
+        on_staff_list: !!roll.personOf.get(c.device_id),
       }));
-      const markedSafe = roster.data!.filter((p) => markByRoster.has(p.id) && !markByRoster.get(p.id)!.checkin_device).map((p) => p.name);
-      const neverAccounted = roster.data!.filter((p) => !matchedRoster.has(p.id)).map((p) => p.name);
+      const markedSafe = roll.markedSafe.map((p) => p.name);
+      const neverAccounted = roll.missing.map((p) => p.name);
       const facts = {
         date: new Date(start).toISOString(),
         weather_point: ev.data.weather, assembly_point: ev.data.point?.name ?? null,
