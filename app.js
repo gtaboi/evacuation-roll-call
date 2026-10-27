@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=11";
-import { normName, matchRoll, timeTo } from "./roll.js?v=11";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, options } from "./config.js?v=12";
+import { normName, matchRoll, timeTo } from "./roll.js?v=12";
 
 const $ = (id) => document.getElementById(id);
 const WEATHER = { dry: "Dry weather", wet: "Wet weather" };
